@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openPorchlight } from "../src/porchlight.ts";
@@ -87,6 +87,20 @@ test("a name that isn't one DNS label is refused and the live porches keep servi
 
 	expect(await caddy.get("tv.porch.test")).toEqual({ body: "hello from tv", status: 200 });
 	expect(await porch.list()).toEqual({ tv: expect.objectContaining({ kind: "service" }) });
+});
+
+test("reserved names are refused for new porches, but an imported Caddy config keeps them", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	for (const name of ["www", "app", "admin", "api", "plans"]) {
+		// eslint-disable-next-line no-await-in-loop -- each refusal is its own case
+		await expect(porch.add(name, upstream("never"))).rejects.toThrow(`${name} is reserved`);
+	}
+	await expect(porch.serve("www", stateDir)).rejects.toThrow("www is reserved");
+	expect(await porch.list()).toEqual({});
+
+	await porch.adopt({ plans: { kind: "artifacts" }, www: { kind: "static", root: stateDir } });
+	expect(Object.keys(await porch.list()).toSorted()).toEqual(["plans", "www"]);
 });
 
 test("adding a name that's already a porch is refused and the first porch keeps its upstream", async () => {
@@ -431,4 +445,30 @@ test("docs renders the porches as Markdown tables, services first, then dev serv
 | ristretto | https://ristretto.porch.test | 3001 |
 | Thinkspace | https://thinkspace.porch.test | 3002, 3003 |
 `);
+});
+
+test("porch drives a Caddy whose admin API is a Unix socket only this user can open", async () => {
+	const socketCaddy = await startCaddy({ adminSocket: true });
+	try {
+		const config = {
+			...machine(),
+			caddy: {
+				admin: socketCaddy.admin,
+				listen: [`127.0.0.1:${socketCaddy.httpsPort}`],
+				managed: false,
+			},
+		};
+		const porch = openPorchlight({ config, stateDir });
+
+		await porch.add("tv", upstream("tv"));
+		await porch.add("books", upstream("books"));
+		await porch.rollback();
+
+		expect(await socketCaddy.get("tv.porch.test")).toEqual({ body: "tv", status: 200 });
+		expect((await socketCaddy.get("books.porch.test")).status).toBe(404);
+		const socket = socketCaddy.admin.slice("unix/".length);
+		expect(((await stat(socket)).mode % 0o1000).toString(8)).toBe("600");
+	} finally {
+		await socketCaddy.stop();
+	}
 });

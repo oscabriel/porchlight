@@ -3,6 +3,7 @@
 import { resolve4 } from "node:dns/promises";
 import { networkInterfaces } from "node:os";
 import { connect } from "node:tls";
+import { adminAddress, adminFetch } from "./caddy-admin.ts";
 import type { MachineConfig } from "./schema.ts";
 
 export interface Check {
@@ -49,26 +50,25 @@ const sh = async (cmd: string[]): Promise<string | null> => {
 };
 
 const caddyChecks = async (config: MachineConfig): Promise<Check[]> => {
-	const admin = new URL(config.caddy.admin);
-	const local = ["127.0.0.1", "localhost", "[::1]"].includes(admin.hostname);
+	const admin = adminAddress(config.caddy.admin);
 	const checks: Check[] = [
 		{
-			detail: local
-				? `${admin.host} answers only this machine`
-				: `${admin.host} may be reachable from other machines, and the admin API has no auth`,
+			detail: admin.local
+				? `${admin.shown} answers only this machine`
+				: `${admin.shown} may be reachable from other machines, and the admin API has no auth`,
 			name: "Caddy admin is local-only",
-			ok: local,
+			ok: admin.local,
 		},
 	];
 	try {
-		const res = await fetch(`${config.caddy.admin.replace(/\/+$/u, "")}/config/`, {
+		const res = await adminFetch(config.caddy.admin, "/config/", {
 			signal: AbortSignal.timeout(2000),
 		});
 		const body = (await res.json()) as {
 			apps?: { http?: { servers?: Record<string, unknown> } };
 		} | null;
 		checks.push({
-			detail: `${config.caddy.admin} returned ${res.status}`,
+			detail: `${admin.shown} returned ${res.status}`,
 			name: "Caddy admin API answers",
 			ok: res.ok,
 		});
@@ -82,7 +82,7 @@ const caddyChecks = async (config: MachineConfig): Promise<Check[]> => {
 		});
 	} catch (error) {
 		checks.push({
-			detail: `can't reach ${config.caddy.admin}: ${(error as Error).message}`,
+			detail: `can't reach ${admin.shown}: ${(error as Error).message}`,
 			name: "Caddy admin API answers",
 			ok: false,
 		});

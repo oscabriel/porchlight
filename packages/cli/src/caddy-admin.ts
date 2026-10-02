@@ -3,12 +3,48 @@
 
 import { PorchError } from "./errors.ts";
 
+const UNIX = "unix/";
+
+/**
+ * Where Caddy's admin API listens, from the machine config's `caddy.admin`:
+ * an `http://host:port` URL, or a Unix socket in Caddy's own `unix//path`
+ * form. `listen` is the value for Caddy's `admin.listen`. A socket gets mode
+ * 0600, so only the user Caddy runs as can open it.
+ */
+export const adminAddress = (admin: string) => {
+	if (admin.startsWith(UNIX)) {
+		const socket = admin.slice(UNIX.length);
+		return {
+			listen: `${UNIX}${socket}|0600`,
+			local: true,
+			shown: socket,
+			// Caddy's admin API refuses requests without a Host header.
+			url: (route: string) => `http://localhost${route}`,
+			via: { unix: socket },
+		};
+	}
+	const base = new URL(admin);
+	return {
+		listen: base.host,
+		local: ["127.0.0.1", "localhost", "[::1]"].includes(base.hostname),
+		shown: base.host,
+		url: (route: string) => new URL(route, base).href,
+		via: {},
+	};
+};
+
+/** `fetch` against Caddy's admin API, wherever it listens. */
+export const adminFetch = (admin: string, route: string, init: RequestInit = {}) => {
+	const address = adminAddress(admin);
+	return fetch(address.url(route), { ...init, ...address.via });
+};
+
 export const createCaddyAdmin = (admin: string) => {
-	const base = admin.replace(/\/+$/u, "");
+	const base = adminAddress(admin).shown;
 
 	const call = async (init?: RequestInit) => {
 		try {
-			return await fetch(`${base}/config/`, init);
+			return await adminFetch(admin, "/config/", init);
 		} catch (error) {
 			throw new PorchError(
 				"caddy-unreachable",

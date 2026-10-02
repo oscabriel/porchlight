@@ -7,4 +7,5 @@
 - **Schemas.** `packages/cli/src/schema.ts` is the source of truth. `packages/cli/schema/*.json` is generated from it with `bun run schema`, and you commit the result. Never hand-edit the generated JSON.
 - **Tests run against a throwaway Caddy.** It listens on high loopback ports only. Linux `SO_REUSEPORT` lets a second Caddy bind `:443` next to a live one without error, and the kernel then splits real traffic between them. Point tests at the machine's real Caddy admin endpoint (`127.0.0.1:2019`) and you overwrite the live proxy.
 - **Replacing Caddy config.** Use `POST /config/` with `If-Match` set to the ETag from `GET /config/`. `POST /load` ignores `If-Match`, so two `porch` processes could silently overwrite each other.
+- **Caddy's admin address.** `caddy.admin` is a URL or a Unix socket in Caddy's `unix//path` form. Go through `adminAddress` and `adminFetch` in `caddy-admin.ts`. `new URL(config.caddy.admin)` throws on a socket.
 - **Framework integration is env vars only.** `porch run` never rewrites a command's flags.

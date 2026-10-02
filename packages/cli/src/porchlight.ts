@@ -3,7 +3,7 @@
 // the full Caddy config from it, swap that in, and save the registry only
 // once Caddy has accepted it.
 import path from "node:path";
-import { createCaddyAdmin } from "./caddy-admin.ts";
+import { adminAddress, createCaddyAdmin } from "./caddy-admin.ts";
 import { PorchError } from "./errors.ts";
 import { renderDocs } from "./docs.ts";
 import { newestHistory, pushHistory } from "./history.ts";
@@ -25,6 +25,22 @@ const checkName = (name: string) => {
 		throw new PorchError(
 			"invalid-name",
 			`"${name}" is not a valid porch name. Use one DNS label: lowercase a-z, 0-9, and -, up to 63 characters.`,
+		);
+	}
+};
+
+/**
+ * Names porch keeps for itself or that people expect to mean something else.
+ * `plans` is the artifacts porch. New porches can't take them, but `adopt`
+ * still accepts them so an imported Caddy config keeps every host it had.
+ */
+export const RESERVED_NAMES: readonly string[] = ["www", "app", "admin", "api", "plans"];
+
+const checkNotReserved = (name: string) => {
+	if (RESERVED_NAMES.includes(name)) {
+		throw new PorchError(
+			"reserved",
+			`${name} is reserved. Pick another name. Reserved: ${RESERVED_NAMES.join(", ")}.`,
 		);
 	}
 };
@@ -63,7 +79,11 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 		});
 	};
 
-	const create = (name: string, porch: Porch) => adopt({ [name]: porch });
+	const create = async (name: string, porch: Porch) => {
+		checkName(name);
+		checkNotReserved(name);
+		await adopt({ [name]: porch });
+	};
 
 	/** Adds a service porch: `https://<name>.<domain>` forwards to `upstream`. */
 	const add = (name: string, upstream: string) => create(name, { kind: "service", upstream });
@@ -90,7 +110,7 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 			// A config without `admin` would move Caddy's admin endpoint to its
 			// default, out from under every later porch command.
 			const restored = {
-				admin: { listen: new URL(config.caddy.admin).host },
+				admin: { listen: adminAddress(config.caddy.admin).listen },
 				...(entry.caddy as object | null),
 			};
 			await caddy.replace(restored, live.etag);

@@ -8,7 +8,8 @@ export type PorchErrorCode =
 	| "exists"
 	| "invalid-name"
 	| "missing"
-	| "no-history";
+	| "no-history"
+	| "reserved";
 
 /** A refusal porch explains to the user. Nothing changed when one is thrown. */
 export class PorchError extends Error {

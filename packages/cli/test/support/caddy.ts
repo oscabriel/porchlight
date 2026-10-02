@@ -67,14 +67,30 @@ const freePort = () => {
 
 export type TestCaddy = Awaited<ReturnType<typeof startCaddy>>;
 
-export const startCaddy = async () => {
+/**
+ * `adminSocket` puts the admin API on a Unix socket in the temp dir, and
+ * `admin` is then in Caddy's `unix//path` form.
+ */
+export const startCaddy = async ({ adminSocket = false } = {}) => {
 	const bin = await ensureCaddy();
 	const home = await mkdtemp(path.join(tmpdir(), "porch-caddy-"));
-	const adminPort = freePort();
 	const httpsPort = freePort();
-	const admin = `http://127.0.0.1:${adminPort}`;
+	let admin: string;
+	let listen: string;
+	let ping: () => Promise<Response>;
+	if (adminSocket) {
+		const socket = path.join(home, "admin.sock");
+		admin = `unix/${socket}`;
+		listen = `${admin}|0600`;
+		ping = () => fetch("http://localhost/config/", { unix: socket });
+	} else {
+		const adminPort = freePort();
+		admin = `http://127.0.0.1:${adminPort}`;
+		listen = `127.0.0.1:${adminPort}`;
+		ping = () => fetch(`${admin}/config/`);
+	}
 	const initial = path.join(home, "initial.json");
-	await Bun.write(initial, JSON.stringify({ admin: { listen: `127.0.0.1:${adminPort}` } }));
+	await Bun.write(initial, JSON.stringify({ admin: { listen } }));
 	const env = {
 		HOME: home,
 		PATH: process.env.PATH ?? "",
@@ -91,7 +107,7 @@ export const startCaddy = async () => {
 	for (;;) {
 		try {
 			// eslint-disable-next-line no-await-in-loop -- polling until Caddy is up
-			if ((await fetch(`${admin}/config/`)).ok) {
+			if ((await ping()).ok) {
 				break;
 			}
 		} catch {

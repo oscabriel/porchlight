@@ -26,7 +26,12 @@ export const MachineConfigSchema = z
 		acmeEmail: z.email(),
 		artifacts: z.string().min(1).describe("Folder `porch publish` copies into"),
 		caddy: z.object({
-			admin: z.string().min(1).describe("Caddy admin endpoint, e.g. http://127.0.0.1:2019"),
+			admin: z
+				.string()
+				.min(1)
+				.describe(
+					"Caddy admin endpoint: a Unix socket in Caddy's form, e.g. unix//run/porchlight/caddy.sock (the porch init default), or a URL, e.g. http://127.0.0.1:2019",
+				),
 			listen: z
 				.array(z.string().min(1))
 				.min(1)

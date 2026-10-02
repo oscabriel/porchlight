@@ -1,14 +1,13 @@
 // Renders the whole Caddy JSON config from the machine config and registry.
 // Porch owns all of it, including `admin`, so a load never moves the admin
 // endpoint out from under the next command.
+import { adminAddress } from "./caddy-admin.ts";
 import { darkPage, esc, fallbackPage } from "./pages.ts";
 import { expandHome } from "./paths.ts";
 import { upstreamOf } from "./probe.ts";
 import type { MachineConfig, Porch, Registry } from "./schema.ts";
 
 type Route = Record<string, unknown>;
-
-const hostPort = (url: string) => new URL(url).host;
 
 // Names without a slash match in every directory, and hiding a directory hides
 // everything under it.
@@ -175,7 +174,7 @@ export const renderCaddyConfig = (config: MachineConfig, registry: Registry) => 
 	const defaultListen = config.caddy.listen === undefined;
 
 	return {
-		admin: { listen: hostPort(config.caddy.admin) },
+		admin: { listen: adminAddress(config.caddy.admin).listen },
 		apps: {
 			http: {
 				servers: {

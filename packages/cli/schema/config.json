@@ -22,7 +22,7 @@
 				"admin": {
 					"type": "string",
 					"minLength": 1,
-					"description": "Caddy admin endpoint, e.g. http://127.0.0.1:2019"
+					"description": "Caddy admin endpoint: a Unix socket in Caddy's form, e.g. unix//run/porchlight/caddy.sock (the porch init default), or a URL, e.g. http://127.0.0.1:2019"
 				},
 				"listen": {
 					"description": "Addresses Caddy serves porches on. Defaults to [\":443\"]",
