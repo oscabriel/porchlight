@@ -14,6 +14,9 @@ import { renderCaddyConfig } from "./render.ts";
 import { PorchName } from "./schema.ts";
 import type { MachineConfig, Porch, Registry } from "./schema.ts";
 
+type ServiceExtra = Omit<Extract<Porch, { kind: "service" }>, "kind" | "upstream">;
+type StaticExtra = Omit<Extract<Porch, { kind: "static" }>, "kind" | "root">;
+
 export interface PorchlightOptions {
 	config: MachineConfig;
 	/** Where the registry and applied-config history live. */
@@ -86,11 +89,12 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 	};
 
 	/** Adds a service porch: `https://<name>.<domain>` forwards to `upstream`. */
-	const add = (name: string, upstream: string) => create(name, { kind: "service", upstream });
+	const add = (name: string, upstream: string, extra: Partial<ServiceExtra> = {}) =>
+		create(name, { ...extra, kind: "service", upstream });
 
 	/** Adds a static porch: `https://<name>.<domain>` serves the files in `root`. */
-	const serve = (name: string, root: string) =>
-		create(name, { kind: "static", root: path.resolve(root) });
+	const serve = (name: string, root: string, extra: Partial<StaticExtra> = {}) =>
+		create(name, { ...extra, kind: "static", root: path.resolve(root) });
 
 	/** Renders the registry and swaps it into Caddy, changing nothing else. */
 	const apply = () => change((registry) => registry);

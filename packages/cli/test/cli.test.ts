@@ -90,6 +90,16 @@ test("a refusal exits 1 with the reason on stderr, or as JSON with --json", asyn
 	});
 });
 
+test("add and serve refuse reserved names", async () => {
+	const added = await porch("add", "www", "http://127.0.0.1:9", "--label", "Web");
+	expect(added.code).toBe(1);
+	expect(added.stderr).toContain("www is reserved");
+
+	const served = await porch("serve", "api", home, "--no-cache");
+	expect(served.code).toBe(1);
+	expect(served.stderr).toContain("api is reserved");
+});
+
 test("a missing machine config says to run porch init", async () => {
 	await rm(path.join(home, "config"), { force: true, recursive: true });
 

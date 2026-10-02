@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 // Entry point for `porch`. Parses arguments, runs one command against the
 // core, and prints the result as text or, with --json, as JSON on stdout.
-import path from "node:path";
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
 import { PorchError } from "./errors.ts";
@@ -102,7 +101,7 @@ const ls = async ({ args, porch }: Context) => {
 const commands: Record<string, (ctx: Context) => Promise<void>> = {
 	add: async ({ args, porch, url }) => {
 		const [name, upstream] = need(args, 2, "porch add <name> <upstream>") as [string, string];
-		await porch.adopt({ [name]: { kind: "service", upstream, ...described() } });
+		await porch.add(name, upstream, described());
 		out(`${url(name)}\n`, { name, url: url(name) });
 	},
 	apply: async ({ args, porch }) => {
@@ -160,14 +159,7 @@ const commands: Record<string, (ctx: Context) => Promise<void>> = {
 	serve: async ({ args, porch, url }) => {
 		const [name, dir] = need(args, 2, "porch serve <name> <dir>") as [string, string];
 		const noCache = values["no-cache"] === true;
-		await porch.adopt({
-			[name]: {
-				kind: "static",
-				root: path.resolve(dir),
-				...(noCache && { noCache }),
-				...described(),
-			},
-		});
+		await porch.serve(name, dir, { ...(noCache && { noCache }), ...described() });
 		out(`${url(name)}\n`, { name, url: url(name) });
 	},
 	status: ls,
