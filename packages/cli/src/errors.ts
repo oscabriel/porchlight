@@ -4,7 +4,9 @@ export type PorchErrorCode =
 	| "caddy-rejected"
 	| "caddy-unreachable"
 	| "exists"
-	| "invalid-name";
+	| "invalid-name"
+	| "missing"
+	| "no-history";
 
 /** A refusal porch explains to the user. Nothing changed when one is thrown. */
 export class PorchError extends Error {

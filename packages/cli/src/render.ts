@@ -1,12 +1,20 @@
 // Renders the whole Caddy JSON config from the machine config and registry.
 // Porch owns all of it, including `admin`, so a load never moves the admin
 // endpoint out from under the next command.
+import { homedir } from "node:os";
 import { darkPage, fallbackPage } from "./pages.ts";
 import type { MachineConfig, Porch, Registry } from "./schema.ts";
 
 type Route = Record<string, unknown>;
 
 const hostPort = (url: string) => new URL(url).host;
+
+const expandHome = (dir: string) =>
+	dir === "~" || dir.startsWith("~/") ? homedir() + dir.slice(1) : dir;
+
+// Names without a slash match in every directory, and hiding a directory hides
+// everything under it.
+const HIDDEN = [".git", ".env", ".env.*", "node_modules"];
 
 const html = (status: number | string, body: string) => ({
 	body,
@@ -33,6 +41,19 @@ const porchRoute = (host: string, porch: Porch): Route => {
 		case "service": {
 			return {
 				handle: [{ handler: "reverse_proxy", upstreams: [{ dial: hostPort(porch.upstream) }] }],
+				match: [{ host: [host] }],
+				terminal: true,
+			};
+		}
+		case "static": {
+			const noCache = porch.noCache
+				? [{ handler: "headers", response: { set: { "Cache-Control": ["no-store"] } } }]
+				: [];
+			return {
+				handle: [
+					...noCache,
+					{ handler: "file_server", hide: HIDDEN, root: expandHome(porch.root) },
+				],
 				match: [{ host: [host] }],
 				terminal: true,
 			};

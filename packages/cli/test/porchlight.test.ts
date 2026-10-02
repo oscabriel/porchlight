@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openPorchlight } from "../src/porchlight.ts";
@@ -119,4 +119,130 @@ test("two porch processes adding at once both land", async () => {
 	expect(Object.keys(await first.list()).toSorted()).toEqual(["books", "tv"]);
 	expect((await caddy.get("tv.porch.test")).body).toBe("tv");
 	expect((await caddy.get("books.porch.test")).body).toBe("books");
+});
+
+test("a removed porch falls through to the fallback page", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+	await porch.add("books", upstream("books"));
+
+	await porch.rm("tv");
+
+	expect((await caddy.get("tv.porch.test")).status).toBe(404);
+	expect((await caddy.get("books.porch.test")).body).toBe("books");
+	expect(Object.keys(await porch.list())).toEqual(["books"]);
+});
+
+test("removing a name that isn't a porch is refused", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await expect(porch.rm("ghost")).rejects.toThrow("ghost is not a porch");
+});
+
+test("a static porch serves a folder and hides .git, .env files, and node_modules", async () => {
+	const root = path.join(stateDir, "site");
+	await mkdir(path.join(root, ".git"), { recursive: true });
+	await mkdir(path.join(root, "node_modules", "left-pad"), { recursive: true });
+	await mkdir(path.join(root, "docs"), { recursive: true });
+	await Promise.all([
+		writeFile(path.join(root, "index.html"), "home page"),
+		writeFile(path.join(root, "docs", "guide.html"), "guide"),
+		writeFile(path.join(root, ".env"), "SECRET=1"),
+		writeFile(path.join(root, ".env.local"), "SECRET=2"),
+		writeFile(path.join(root, ".git", "config"), "[core]"),
+		writeFile(path.join(root, "node_modules", "left-pad", "index.js"), "module.exports"),
+	]);
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.serve("depot", root);
+
+	expect(await caddy.get("depot.porch.test")).toEqual({ body: "home page", status: 200 });
+	expect(await caddy.get("depot.porch.test", "/docs/guide.html")).toEqual({
+		body: "guide",
+		status: 200,
+	});
+	for (const hidden of [
+		"/.env",
+		"/.env.local",
+		"/.git/config",
+		"/node_modules/left-pad/index.js",
+	]) {
+		// eslint-disable-next-line no-await-in-loop -- one request at a time reads clearer in a failure
+		expect({ hidden, status: (await caddy.get("depot.porch.test", hidden)).status }).toEqual({
+			hidden,
+			status: 404,
+		});
+	}
+});
+
+test("apply restores every porch after Caddy loses its config", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+	// What a Caddy restart without --resume looks like: only the admin endpoint survives.
+	const adminOnly = { admin: { listen: new URL(caddy.admin).host } };
+	await fetch(`${caddy.admin}/load`, {
+		body: JSON.stringify(adminOnly),
+		headers: { "Content-Type": "application/json" },
+		method: "POST",
+	});
+
+	await porch.apply();
+
+	expect((await caddy.get("tv.porch.test")).body).toBe("tv");
+});
+
+test("rollback steps back through earlier states, one change at a time", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+	await porch.add("books", upstream("books"));
+
+	await porch.rollback();
+	expect(Object.keys(await porch.list())).toEqual(["tv"]);
+	expect((await caddy.get("books.porch.test")).status).toBe(404);
+	expect((await caddy.get("tv.porch.test")).body).toBe("tv");
+
+	await porch.rollback();
+	expect(await porch.list()).toEqual({});
+
+	await expect(porch.rollback()).rejects.toThrow("Nothing to roll back to");
+});
+
+test("rollback restores a config porch didn't write, such as Caddy's config before porch took over", async () => {
+	const before = {
+		admin: { listen: new URL(caddy.admin).host },
+		apps: {
+			http: {
+				servers: {
+					old: {
+						automatic_https: { disable_redirects: true },
+						listen: [`127.0.0.1:${caddy.httpsPort}`],
+						routes: [
+							{
+								handle: [{ body: "old setup", handler: "static_response" }],
+								match: [{ host: ["old.porch.test"] }],
+							},
+						],
+					},
+				},
+			},
+			pki: { certificate_authorities: { local: { install_trust: false } } },
+			tls: {
+				automation: {
+					policies: [{ issuers: [{ module: "internal" }], subjects: ["old.porch.test"] }],
+				},
+			},
+		},
+	};
+	const loaded = await fetch(`${caddy.admin}/load`, {
+		body: JSON.stringify(before),
+		headers: { "Content-Type": "application/json" },
+		method: "POST",
+	});
+	expect(loaded.status).toBe(200);
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+
+	await porch.rollback();
+
+	expect(await caddy.get("old.porch.test")).toEqual({ body: "old setup", status: 200 });
 });

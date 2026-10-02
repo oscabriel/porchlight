@@ -2,13 +2,15 @@
 // under the state-dir lock, read the registry, compute the next one, render
 // the full Caddy config from it, swap that in, and save the registry only
 // once Caddy has accepted it.
+import path from "node:path";
 import { createCaddyAdmin } from "./caddy-admin.ts";
 import { PorchError } from "./errors.ts";
+import { newestHistory, pushHistory } from "./history.ts";
 import { withLock } from "./lock.ts";
 import { loadRegistry, saveRegistry } from "./registry.ts";
 import { renderCaddyConfig } from "./render.ts";
 import { PorchName } from "./schema.ts";
-import type { MachineConfig, Registry } from "./schema.ts";
+import type { MachineConfig, Porch, Registry } from "./schema.ts";
 
 export interface PorchlightOptions {
 	config: MachineConfig;
@@ -30,13 +32,19 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 
 	const change = (update: (current: Registry) => Registry) =>
 		withLock(stateDir, async () => {
-			const registry = update(await loadRegistry(stateDir));
-			await caddy.replace(renderCaddyConfig(config, registry), await caddy.etag());
+			const live = await caddy.current();
+			const before = await loadRegistry(stateDir);
+			const registry = update(before);
+			await caddy.replace(renderCaddyConfig(config, registry), live.etag);
+			await pushHistory(stateDir, {
+				at: new Date().toISOString(),
+				caddy: live.config,
+				registry: before,
+			});
 			await saveRegistry(stateDir, registry);
 		});
 
-	/** Adds a service porch: `https://<name>.<domain>` forwards to `upstream`. */
-	const add = async (name: string, upstream: string) => {
+	const create = async (name: string, porch: Porch) => {
 		checkName(name);
 		await change((registry) => {
 			if (registry.porches[name]) {
@@ -45,10 +53,51 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 					`${name} is already a porch. Remove it first with \`porch rm ${name}\`.`,
 				);
 			}
-			return {
-				...registry,
-				porches: { ...registry.porches, [name]: { kind: "service", upstream } },
+			return { ...registry, porches: { ...registry.porches, [name]: porch } };
+		});
+	};
+
+	/** Adds a service porch: `https://<name>.<domain>` forwards to `upstream`. */
+	const add = (name: string, upstream: string) => create(name, { kind: "service", upstream });
+
+	/** Adds a static porch: `https://<name>.<domain>` serves the files in `root`. */
+	const serve = (name: string, root: string) =>
+		create(name, { kind: "static", root: path.resolve(root) });
+
+	/** Renders the registry and swaps it into Caddy, changing nothing else. */
+	const apply = () => change((registry) => registry);
+
+	/**
+	 * Puts back what was live before the most recent change: Caddy's config
+	 * exactly as it was, and the registry. Each call steps back one change.
+	 */
+	const rollback = () =>
+		withLock(stateDir, async () => {
+			const newest = await newestHistory(stateDir);
+			if (!newest) {
+				throw new PorchError("no-history", "Nothing to roll back to.");
+			}
+			const { entry } = newest;
+			const live = await caddy.current();
+			// A config without `admin` would move Caddy's admin endpoint to its
+			// default, out from under every later porch command.
+			const restored = {
+				admin: { listen: new URL(config.caddy.admin).host },
+				...(entry.caddy as object | null),
 			};
+			await caddy.replace(restored, live.etag);
+			await saveRegistry(stateDir, entry.registry);
+			await newest.drop();
+		});
+
+	/** Removes a porch. Its name falls through to the fallback page. */
+	const rm = async (name: string) => {
+		await change((registry) => {
+			if (!registry.porches[name]) {
+				throw new PorchError("missing", `${name} is not a porch. Run \`porch ls\` to see them.`);
+			}
+			const { [name]: _removed, ...porches } = registry.porches;
+			return { ...registry, porches };
 		});
 	};
 
@@ -58,5 +107,5 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 		return registry.porches;
 	};
 
-	return { add, list };
+	return { add, apply, list, rm, rollback, serve };
 };

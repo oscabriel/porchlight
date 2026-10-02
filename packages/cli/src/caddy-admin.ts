@@ -6,7 +6,8 @@ import { PorchError } from "./errors.ts";
 export const createCaddyAdmin = (admin: string) => {
 	const base = admin.replace(/\/+$/u, "");
 
-	const etag = async () => {
+	/** Caddy's whole config (`null` when empty) and the ETag to replace it with. */
+	const current = async () => {
 		const res = await fetch(`${base}/config/`);
 		if (!res.ok) {
 			throw new PorchError(
@@ -14,7 +15,7 @@ export const createCaddyAdmin = (admin: string) => {
 				`Caddy at ${base} returned ${res.status} for GET /config/`,
 			);
 		}
-		return res.headers.get("etag") ?? "";
+		return { config: (await res.json()) as unknown, etag: res.headers.get("etag") ?? "" };
 	};
 
 	/** Replaces the whole config, failing if someone else changed it since `expected`. */
@@ -42,5 +43,5 @@ export const createCaddyAdmin = (admin: string) => {
 		}
 	};
 
-	return { etag, replace };
+	return { current, replace };
 };
