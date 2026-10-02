@@ -1,7 +1,7 @@
 // A lock on the state dir, so concurrent porch processes take turns between
-// reading the registry and swapping Caddy's config. mkdir is atomic. The
-// holder's PID lives inside, so a lock left by a dead process can be broken.
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+// reading the registry and reloading the proxy. mkdir is atomic. The holder's
+// PID lives inside, so a lock left by a dead process can be broken.
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { PorchError } from "./errors.ts";
 
@@ -23,6 +23,22 @@ const holder = async (dir: string) => {
 	return text && Number.isInteger(pid) ? pid : undefined;
 };
 
+/**
+ * Breaks a dead holder's lock. Two waiters can both see the same dead PID,
+ * and if both removed the dir, the second would delete the lock the first
+ * had just taken. Renaming first is atomic, so only one of them wins and the
+ * other finds nothing to break.
+ */
+const breakLock = async (dir: string) => {
+	const stale = `${dir}.stale-${process.pid}-${Date.now()}`;
+	try {
+		await rename(dir, stale);
+	} catch {
+		return;
+	}
+	await rm(stale, { force: true, recursive: true });
+};
+
 export const withLock = async <T>(stateDir: string, fn: () => Promise<T>): Promise<T> => {
 	await mkdir(stateDir, { recursive: true });
 	const dir = path.join(stateDir, "lock");
@@ -41,7 +57,7 @@ export const withLock = async <T>(stateDir: string, fn: () => Promise<T>): Promi
 			const pid = await holder(dir);
 			if (pid !== undefined && !alive(pid)) {
 				// eslint-disable-next-line no-await-in-loop -- breaking a dead holder's lock
-				await rm(dir, { force: true, recursive: true });
+				await breakLock(dir);
 				continue;
 			}
 			if (Date.now() > deadline) {
