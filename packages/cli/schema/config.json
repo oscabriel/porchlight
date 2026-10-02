@@ -1,0 +1,106 @@
+{
+	"$id": "https://unpkg.com/porchlight/schema/config.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"acmeEmail": {
+			"type": "string",
+			"format": "email",
+			"pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+		},
+		"artifacts": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Folder `porch publish` copies into"
+		},
+		"caddy": {
+			"type": "object",
+			"properties": {
+				"admin": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Caddy admin endpoint, e.g. http://127.0.0.1:2019"
+				},
+				"managed": {
+					"type": "boolean",
+					"description": "True when porch installed Caddy and owns its systemd unit"
+				}
+			},
+			"required": [
+				"admin",
+				"managed"
+			],
+			"additionalProperties": false
+		},
+		"dns": {
+			"type": "object",
+			"properties": {
+				"provider": {
+					"type": "string",
+					"const": "cloudflare"
+				},
+				"tokenEnv": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Name of the env var that holds the DNS API token"
+				}
+			},
+			"required": [
+				"provider",
+				"tokenEnv"
+			],
+			"additionalProperties": false
+		},
+		"domain": {
+			"type": "string",
+			"minLength": 1,
+			"description": "The domain every porch lives under, e.g. gneiss.run"
+		},
+		"network": {
+			"type": "string",
+			"const": "tailscale"
+		},
+		"ports": {
+			"type": "object",
+			"properties": {
+				"range": {
+					"type": "array",
+					"prefixItems": [
+						{
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 65535
+						},
+						{
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 65535
+						}
+					],
+					"items": false,
+					"minItems": 2,
+					"maxItems": 2,
+					"description": "Inclusive range porch leases dev ports from"
+				}
+			},
+			"required": [
+				"range"
+			],
+			"additionalProperties": false
+		}
+	},
+	"required": [
+		"acmeEmail",
+		"artifacts",
+		"caddy",
+		"dns",
+		"domain",
+		"network",
+		"ports"
+	],
+	"additionalProperties": false,
+	"title": "Porchlight machine config"
+}

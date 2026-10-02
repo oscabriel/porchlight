@@ -1,0 +1,22 @@
+{
+	"name": "@porchlight/vite",
+	"version": "0.0.0",
+	"description": "Vite plugin for Porchlight. Reads the env that `porch run` sets and configures the dev server's host, port, and allowed hosts. Does nothing without porch.",
+	"license": "MIT",
+	"author": "oscabriel",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/oscabriel/porchlight.git",
+		"directory": "packages/vite"
+	},
+	"files": [
+		"src"
+	],
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"peerDependencies": {
+		"vite": "^8"
+	}
+}

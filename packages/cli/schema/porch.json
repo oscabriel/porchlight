@@ -1,0 +1,30 @@
+{
+	"$id": "https://unpkg.com/porchlight/schema/porch.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"hostEnv": {
+			"description": "Extra env var porch sets to the porch's host",
+			"type": "string"
+		},
+		"name": {
+			"description": "Porch name. Defaults to the package name",
+			"type": "string",
+			"pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+		},
+		"port": {
+			"description": "Pin a port when something else owns it",
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 65535
+		},
+		"start": {
+			"type": "string"
+		}
+	},
+	"additionalProperties": false,
+	"title": "Porchlight project config"
+}

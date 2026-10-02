@@ -1,0 +1,147 @@
+{
+	"$id": "https://unpkg.com/porchlight/schema/porches.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string"
+		},
+		"porches": {
+			"type": "object",
+			"propertyNames": {
+				"type": "string",
+				"pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+			},
+			"additionalProperties": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "dev"
+							},
+							"port": {
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 65535,
+								"description": "The leased port. It never changes once assigned"
+							},
+							"project": {
+								"type": "string"
+							},
+							"split": {
+								"description": "Paths routed to a second local port",
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"method": {
+											"type": "string"
+										},
+										"paths": {
+											"minItems": 1,
+											"type": "array",
+											"items": {
+												"type": "string",
+												"minLength": 1
+											}
+										},
+										"port": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 65535
+										}
+									},
+									"required": [
+										"paths",
+										"port"
+									],
+									"additionalProperties": false
+								}
+							},
+							"start": {
+								"description": "Command that lights this porch, shown on its dark page",
+								"type": "string"
+							}
+						},
+						"required": [
+							"kind",
+							"port"
+						],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "service"
+							},
+							"label": {
+								"type": "string"
+							},
+							"redirect": {
+								"type": "object",
+								"propertyNames": {
+									"type": "string"
+								},
+								"additionalProperties": {
+									"type": "string"
+								}
+							},
+							"upstream": {
+								"type": "string",
+								"format": "uri"
+							}
+						},
+						"required": [
+							"kind",
+							"upstream"
+						],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "static"
+							},
+							"noCache": {
+								"type": "boolean"
+							},
+							"root": {
+								"type": "string",
+								"minLength": 1
+							}
+						},
+						"required": [
+							"kind",
+							"root"
+						],
+						"additionalProperties": false
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": {
+								"type": "string",
+								"const": "artifacts"
+							}
+						},
+						"required": [
+							"kind"
+						],
+						"additionalProperties": false
+					}
+				]
+			}
+		}
+	},
+	"required": [
+		"porches"
+	],
+	"additionalProperties": false,
+	"title": "Porchlight registry"
+}

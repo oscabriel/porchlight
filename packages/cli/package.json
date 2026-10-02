@@ -1,0 +1,31 @@
+{
+	"name": "porchlight",
+	"version": "0.0.0",
+	"description": "Named HTTPS URLs on your own domain for dev servers, services, and static folders, reachable from every device on your private network. Drives Caddy through its admin API.",
+	"license": "MIT",
+	"author": "oscabriel",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/oscabriel/porchlight.git",
+		"directory": "packages/cli"
+	},
+	"bin": {
+		"porch": "./src/cli.ts"
+	},
+	"files": [
+		"src",
+		"schema",
+		"README.md"
+	],
+	"type": "module",
+	"scripts": {
+		"schema": "bun scripts/schema.ts",
+		"build": "bun build --compile src/cli.ts --outfile dist/porch"
+	},
+	"dependencies": {
+		"zod": "^4.6.5"
+	},
+	"engines": {
+		"bun": ">=1.3"
+	}
+}
