@@ -109,7 +109,7 @@ export const startCaddy = async () => {
 	 * Uses curl so TLS works like a browser's. Retries TLS handshake failures
 	 * (curl exit 35) for a few seconds, because Caddy issues certs after a load returns.
 	 */
-	const get = async (host: string, urlPath = "/") => {
+	const get = async (host: string, urlPath = "/", requestHeaders: string[] = []) => {
 		const cmd = [
 			"curl",
 			"-sk",
@@ -117,6 +117,7 @@ export const startCaddy = async () => {
 			"5",
 			"--resolve",
 			`${host}:${httpsPort}:127.0.0.1`,
+			...requestHeaders.flatMap((h) => ["-H", h]),
 			"-o",
 			"-",
 			"-w",
@@ -140,11 +141,32 @@ export const startCaddy = async () => {
 		}
 	};
 
+	/** Response headers (lowercased names, first value) for a GET through Caddy. */
+	const headers = async (host: string, urlPath = "/", requestHeaders: string[] = []) => {
+		await get(host, urlPath, requestHeaders);
+		const out = await run([
+			"curl",
+			"-sk",
+			"--max-time",
+			"5",
+			"--resolve",
+			`${host}:${httpsPort}:127.0.0.1`,
+			...requestHeaders.flatMap((h) => ["-H", h]),
+			"-o",
+			"/dev/null",
+			"-w",
+			"%{header_json}",
+			`https://${host}:${httpsPort}${urlPath}`,
+		]);
+		const parsed = JSON.parse(out) as Record<string, string[]>;
+		return Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, v[0] ?? ""]));
+	};
+
 	const stop = async () => {
 		proc.kill();
 		await proc.exited;
 		await rm(home, { force: true, recursive: true });
 	};
 
-	return { admin, get, httpsPort, stop };
+	return { admin, get, headers, httpsPort, stop };
 };

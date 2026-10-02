@@ -1,0 +1,923 @@
+{
+	"apps": {
+		"http": {
+			"servers": {
+				"srv0": {
+					"listen": [":443"],
+					"routes": [
+						{
+							"match": [
+								{
+									"host": ["*.example.com"]
+								}
+							],
+							"handle": [
+								{
+									"handler": "subroute",
+									"routes": [
+										{
+											"handle": [
+												{
+													"encodings": {
+														"gzip": {},
+														"zstd": {}
+													},
+													"handler": "encode",
+													"prefer": ["zstd", "gzip"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:8096"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["watch.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:2283"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["photos.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8099"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["files.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8989"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["tv.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:7878"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["movies.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:9696"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["search.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:5000"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["books.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8787"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["library.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:8001"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["read.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:13378"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["listen.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:6767"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["subs.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:5056"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["seer.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:5006"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["budget.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8181"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["torrent.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8282"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["nzb.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:4096"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["code.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "vars",
+																	"root": "/home/me/Developer/agent-artifacts"
+																},
+																{
+																	"browse": {},
+																	"handler": "file_server",
+																	"hide": ["/etc/caddy/Caddyfile"]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["plans.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "vars",
+																	"root": "/home/me/Developer/projects/teach-depot"
+																},
+																{
+																	"handler": "headers",
+																	"response": {
+																		"set": {
+																			"Cache-Control": ["no-cache"]
+																		}
+																	}
+																},
+																{
+																	"browse": {},
+																	"handler": "file_server",
+																	"hide": ["/etc/caddy/Caddyfile"]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["depot.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3003"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["thinkspace.example.com"],
+													"path": ["/rpc*", "/api/auth*", "/api-reference*"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3003"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["thinkspace.example.com"],
+													"method": ["POST"],
+													"path": ["/ai"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3002"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["thinkspace.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3004"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["nouveau.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3005"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["portfolio.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:3001"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["ristretto.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:80"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["zima.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:7681"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["terminal.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "static_response",
+																	"headers": {
+																		"Location": ["/admin/"]
+																	},
+																	"status_code": 308
+																}
+															],
+															"match": [
+																{
+																	"path": ["/"]
+																}
+															]
+														},
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8800"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["dns.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "192.168.1.10:8123"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["home.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"handler": "reverse_proxy",
+																	"upstreams": [
+																		{
+																			"dial": "localhost:1337"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											],
+											"match": [
+												{
+													"host": ["jev.example.com"]
+												}
+											]
+										},
+										{
+											"group": "group30",
+											"handle": [
+												{
+													"handler": "subroute",
+													"routes": [
+														{
+															"handle": [
+																{
+																	"body": "Service not found",
+																	"handler": "static_response",
+																	"status_code": 404
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							],
+							"terminal": true
+						}
+					]
+				}
+			}
+		},
+		"tls": {
+			"automation": {
+				"policies": [
+					{
+						"subjects": ["*.example.com"],
+						"issuers": [
+							{
+								"challenges": {
+									"dns": {
+										"provider": {
+											"api_token": "{env.CLOUDFLARE_API_TOKEN}",
+											"name": "cloudflare"
+										}
+									}
+								},
+								"email": "admin@example.com",
+								"module": "acme"
+							}
+						]
+					},
+					{
+						"issuers": [
+							{
+								"challenges": {
+									"dns": {
+										"provider": {
+											"api_token": "{env.CLOUDFLARE_API_TOKEN}",
+											"name": "cloudflare"
+										}
+									}
+								},
+								"email": "admin@example.com",
+								"module": "acme"
+							},
+							{
+								"ca": "https://acme.zerossl.com/v2/DV90",
+								"challenges": {
+									"dns": {
+										"provider": {
+											"api_token": "{env.CLOUDFLARE_API_TOKEN}",
+											"name": "cloudflare"
+										}
+									}
+								},
+								"email": "admin@example.com",
+								"module": "acme"
+							}
+						]
+					}
+				]
+			}
+		}
+	}
+}

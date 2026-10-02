@@ -7,6 +7,7 @@ import { createCaddyAdmin } from "./caddy-admin.ts";
 import { PorchError } from "./errors.ts";
 import { newestHistory, pushHistory } from "./history.ts";
 import { withLock } from "./lock.ts";
+import { probe } from "./probe.ts";
 import { loadRegistry, saveRegistry } from "./registry.ts";
 import { renderCaddyConfig } from "./render.ts";
 import { PorchName } from "./schema.ts";
@@ -44,18 +45,24 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 			await saveRegistry(stateDir, registry);
 		});
 
-	const create = async (name: string, porch: Porch) => {
-		checkName(name);
+	/** Adds every porch in `porches` in one apply. Refuses all of them if any name is invalid or taken. */
+	const adopt = async (porches: Record<string, Porch>) => {
+		for (const name of Object.keys(porches)) {
+			checkName(name);
+		}
 		await change((registry) => {
-			if (registry.porches[name]) {
+			const taken = Object.keys(porches).find((name) => registry.porches[name]);
+			if (taken) {
 				throw new PorchError(
 					"exists",
-					`${name} is already a porch. Remove it first with \`porch rm ${name}\`.`,
+					`${taken} is already a porch. Remove it first with \`porch rm ${taken}\`.`,
 				);
 			}
-			return { ...registry, porches: { ...registry.porches, [name]: porch } };
+			return { ...registry, porches: { ...registry.porches, ...porches } };
 		});
 	};
+
+	const create = (name: string, porch: Porch) => adopt({ [name]: porch });
 
 	/** Adds a service porch: `https://<name>.<domain>` forwards to `upstream`. */
 	const add = (name: string, upstream: string) => create(name, { kind: "service", upstream });
@@ -107,5 +114,18 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 		return registry.porches;
 	};
 
-	return { add, apply, list, rm, rollback, serve };
+	/** Every porch, sorted by name, with its URL and whether it is lit. */
+	const status = async () => {
+		const porches = Object.entries(await list()).toSorted(([a], [b]) => a.localeCompare(b));
+		return Promise.all(
+			porches.map(async ([name, porch]) => ({
+				kind: porch.kind,
+				name,
+				state: await probe(config, porch),
+				url: `https://${name}.${config.domain}`,
+			})),
+		);
+	};
+
+	return { add, adopt, apply, list, rm, rollback, serve, status };
 };

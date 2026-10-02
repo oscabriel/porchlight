@@ -6,6 +6,7 @@ import { openPorchlight } from "../src/porchlight.ts";
 import type { MachineConfig } from "../src/schema.ts";
 import { startCaddy } from "./support/caddy.ts";
 import type { TestCaddy } from "./support/caddy.ts";
+import { selfSigned } from "./support/tls.ts";
 
 let caddy: TestCaddy;
 let stateDir: string;
@@ -245,4 +246,116 @@ test("rollback restores a config porch didn't write, such as Caddy's config befo
 	await porch.rollback();
 
 	expect(await caddy.get("old.porch.test")).toEqual({ body: "old setup", status: 200 });
+});
+
+test("status reports each porch as lit or dark", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+	await porch.add("books", upstream("books"));
+	servers.pop()?.stop(true);
+	const site = path.join(stateDir, "site");
+	await mkdir(site);
+	await porch.serve("depot", site);
+	await porch.serve("gone", path.join(stateDir, "missing"));
+
+	const status = await porch.status();
+
+	expect(status.map(({ name, state, url }) => ({ name, state, url }))).toEqual([
+		{ name: "books", state: "dark", url: "https://books.porch.test" },
+		{ name: "depot", state: "lit", url: "https://depot.porch.test" },
+		{ name: "gone", state: "dark", url: "https://gone.porch.test" },
+		{ name: "tv", state: "lit", url: "https://tv.porch.test" },
+	]);
+});
+
+test("adopt adds a set of porches in one apply, or none if any name is taken", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+
+	await expect(
+		porch.adopt({
+			books: { kind: "service", upstream: upstream("books") },
+			tv: { kind: "service", upstream: upstream("other") },
+		}),
+	).rejects.toThrow("tv is already a porch");
+	expect(Object.keys(await porch.list())).toEqual(["tv"]);
+
+	await porch.adopt({
+		books: { kind: "service", upstream: upstream("books") },
+		movies: { kind: "service", upstream: upstream("movies") },
+	});
+	expect((await caddy.get("books.porch.test")).body).toBe("books");
+	expect((await caddy.get("movies.porch.test")).body).toBe("movies");
+});
+
+const portOf = (url: string) => Number(new URL(url).port);
+
+test("a dev porch forwards to its port, and split paths go to the second port", async () => {
+	const web = portOf(upstream("web"));
+	const api = portOf(upstream("api"));
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.adopt({
+		thinkspace: {
+			kind: "dev",
+			port: web,
+			split: [
+				{ paths: ["/rpc*"], port: api },
+				{ method: "POST", paths: ["/ai"], port: api },
+			],
+		},
+	});
+
+	expect((await caddy.get("thinkspace.porch.test", "/")).body).toBe("web");
+	expect((await caddy.get("thinkspace.porch.test", "/rpc/list")).body).toBe("api");
+	expect((await caddy.get("thinkspace.porch.test", "/ai")).body).toBe("web");
+});
+
+test("a dark dev porch says where to run its start command", async () => {
+	const url = upstream("soon gone");
+	servers.pop()?.stop(true);
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.adopt({
+		ristretto: {
+			kind: "dev",
+			port: portOf(url),
+			project: "~/Developer/projects/ristretto",
+			start: "bun run dev",
+		},
+	});
+
+	const res = await caddy.get("ristretto.porch.test");
+	expect(res.status).toBe(502);
+	expect(res.body).toContain("ristretto is dark");
+	expect(res.body).toContain(
+		"<code>bun run dev</code> in <code>~/Developer/projects/ristretto</code>",
+	);
+});
+
+test("a service porch can redirect a path before forwarding", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.adopt({
+		dns: { kind: "service", redirect: { "/": "/admin/" }, upstream: upstream("pihole") },
+	});
+
+	expect((await caddy.headers("dns.porch.test", "/")).location).toBe("/admin/");
+	expect((await caddy.get("dns.porch.test", "/")).status).toBe(308);
+	expect((await caddy.get("dns.porch.test", "/admin/")).body).toBe("pihole");
+});
+
+test("a service porch can forward to an https upstream", async () => {
+	const tls = Bun.serve({
+		fetch: () => new Response("over tls"),
+		hostname: "127.0.0.1",
+		port: 0,
+		tls: await selfSigned(),
+	});
+	servers.push(tls);
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.add("nas", `https://127.0.0.1:${tls.port}`);
+
+	expect(await caddy.get("nas.porch.test")).toEqual({ body: "over tls", status: 200 });
 });
