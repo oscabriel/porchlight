@@ -2,18 +2,16 @@ export type PorchErrorCode =
 	| "bad-config"
 	| "no-config"
 	| "busy"
-	| "caddy-conflict"
-	| "caddy-rejected"
 	| "caddy-unreachable"
 	| "dns-conflict"
-	| "download-failed"
-	| "init-failed"
-	| "unsupported"
 	| "dns-denied"
 	| "exists"
+	| "import-failed"
+	| "init-failed"
 	| "invalid-name"
 	| "missing"
 	| "no-history"
+	| "proxy-refused"
 	| "reserved";
 
 /** A refusal porch explains to the user. Nothing changed when one is thrown. */

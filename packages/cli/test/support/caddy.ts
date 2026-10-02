@@ -1,5 +1,7 @@
-// A throwaway Caddy for tests. It listens on random loopback ports, and HOME
-// and XDG dirs point at a temp dir. Never the machine's real Caddy: see AGENTS.md.
+// A throwaway Caddy for tests, run the way a user runs theirs: from a
+// Caddyfile that imports porch's snippet. It listens on random loopback
+// ports, and HOME and XDG dirs point at a temp dir. Never the machine's real
+// Caddy: see AGENTS.md.
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,6 +60,14 @@ export const ensureCaddy = async () => {
 	return binary;
 };
 
+/** Puts the test Caddy on PATH for code that shells out to `caddy`, such as `caddy adapt`. */
+export const withCaddyOnPath = async () => {
+	await ensureCaddy();
+	if (!process.env.PATH?.split(":").includes(cacheDir)) {
+		process.env.PATH = `${cacheDir}:${process.env.PATH ?? ""}`;
+	}
+};
+
 export const freePort = () => {
 	const server = Bun.serve({ fetch: () => new Response(), hostname: "127.0.0.1", port: 0 });
 	const { port } = server;
@@ -70,37 +80,58 @@ export const freePort = () => {
 
 export type TestCaddy = Awaited<ReturnType<typeof startCaddy>>;
 
+const EMPTY_SNIPPET = "# empty until porch writes it\n";
+
 /**
- * `adminSocket` puts the admin API on a Unix socket in the temp dir, and
- * `admin` is then in Caddy's `unix//path` form.
+ * Starts a Caddy from a Caddyfile shaped like a user's: one `*.porch.test`
+ * site with its own TLS, `site` lines of its own (hand-written handles), and
+ * the three snippet imports. `reload` is the command porch runs after a change.
  */
-export const startCaddy = async ({ adminSocket = false } = {}) => {
+export const startCaddy = async ({ site = "" } = {}) => {
 	const bin = await ensureCaddy();
 	const home = await mkdtemp(path.join(tmpdir(), "porch-caddy-"));
 	const httpsPort = freePort();
-	let admin: string;
-	let listen: string;
-	let ping: () => Promise<Response>;
-	if (adminSocket) {
-		const socket = path.join(home, "admin.sock");
-		admin = `unix/${socket}`;
-		listen = `${admin}|0600`;
-		ping = () => fetch("http://localhost/config/", { unix: socket });
-	} else {
-		const adminPort = freePort();
-		admin = `http://127.0.0.1:${adminPort}`;
-		listen = `127.0.0.1:${adminPort}`;
-		ping = () => fetch(`${admin}/config/`);
-	}
-	const initial = path.join(home, "initial.json");
-	await Bun.write(initial, JSON.stringify({ admin: { listen } }));
+	const adminPort = freePort();
+	const admin = `http://127.0.0.1:${adminPort}`;
+	const snippetDir = path.join(home, "porchlight");
+	await mkdir(snippetDir);
+	await Promise.all(
+		["porches.caddy", "errors.caddy", "fallback.caddy"].map((file) =>
+			Bun.write(path.join(snippetDir, file), EMPTY_SNIPPET),
+		),
+	);
+	const caddyfile = path.join(home, "Caddyfile");
+
+	/** Rewrites the Caddyfile. `extra` goes into the site block, for breaking it on purpose. */
+	const writeCaddyfile = (extra = "") =>
+		Bun.write(
+			caddyfile,
+			`{
+	admin 127.0.0.1:${adminPort}
+	local_certs
+	skip_install_trust
+	auto_https disable_redirects
+}
+
+*.porch.test:${httpsPort} {
+	tls internal
+	encode zstd gzip
+${site}${extra}
+	import ${snippetDir}/porches.caddy
+	import ${snippetDir}/errors.caddy
+	import ${snippetDir}/fallback.caddy
+}
+`,
+		);
+	await writeCaddyfile();
+
 	const env = {
 		HOME: home,
 		PATH: process.env.PATH ?? "",
 		XDG_CONFIG_HOME: path.join(home, "config"),
 		XDG_DATA_HOME: path.join(home, "data"),
 	};
-	const proc = Bun.spawn([bin, "run", "--config", initial], {
+	const proc = Bun.spawn([bin, "run", "--config", caddyfile], {
 		env,
 		stderr: "pipe",
 		stdout: "pipe",
@@ -110,7 +141,7 @@ export const startCaddy = async ({ adminSocket = false } = {}) => {
 	for (;;) {
 		try {
 			// eslint-disable-next-line no-await-in-loop -- polling until Caddy is up
-			if ((await ping()).ok) {
+			if ((await fetch(`${admin}/config/`)).ok) {
 				break;
 			}
 		} catch {
@@ -189,11 +220,20 @@ export const startCaddy = async ({ adminSocket = false } = {}) => {
 
 	/** The root certificate of this Caddy's internal CA, to verify its certs against. */
 	const rootCa = async () => {
-		const res = adminSocket
-			? await fetch("http://localhost/pki/ca/local", { unix: admin.slice("unix/".length) })
-			: await fetch(`${admin}/pki/ca/local`);
+		const res = await fetch(`${admin}/pki/ca/local`);
 		return ((await res.json()) as { root_certificate: string }).root_certificate;
 	};
 
-	return { admin, get, headers, httpsPort, rootCa, stop };
+	return {
+		admin,
+		caddyfile,
+		get,
+		headers,
+		httpsPort,
+		reload: `${bin} reload --config ${caddyfile} --adapter caddyfile`,
+		rootCa,
+		snippetDir,
+		stop,
+		writeCaddyfile,
+	};
 };

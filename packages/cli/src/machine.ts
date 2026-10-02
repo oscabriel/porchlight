@@ -5,22 +5,14 @@ import path from "node:path";
 import { PorchError } from "./errors.ts";
 import { MachineConfigSchema } from "./schema.ts";
 
-const xdg = (name: "XDG_CONFIG_HOME" | "XDG_DATA_HOME" | "XDG_STATE_HOME", fallback: string) =>
+const xdg = (name: "XDG_CONFIG_HOME" | "XDG_STATE_HOME", fallback: string) =>
 	process.env[name] || path.join(homedir(), fallback);
 
 export const configDir = () => path.join(xdg("XDG_CONFIG_HOME", ".config"), "porchlight");
 export const configPath = () => path.join(configDir(), "config.json");
 export const stateDir = () => path.join(xdg("XDG_STATE_HOME", ".local/state"), "porchlight");
-const dataDir = () => path.join(xdg("XDG_DATA_HOME", ".local/share"), "porchlight");
-
-/** Files `porch init` writes for the Caddy it manages. */
-export const managedCaddyFiles = () => ({
-	binary: path.join(dataDir(), "caddy"),
-	/** The DNS API token, mode 0600. */
-	envFile: path.join(configDir(), "caddy.env"),
-	/** What Caddy loads on its first start, before `--resume` has anything. */
-	initialConfig: path.join(configDir(), "caddy-initial.json"),
-});
+/** Where the snippet goes unless the machine config says otherwise. */
+export const defaultSnippetDir = () => path.join(configDir(), "caddy");
 
 export const loadMachineConfig = async () => {
 	const file = Bun.file(configPath());

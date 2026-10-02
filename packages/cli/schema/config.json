@@ -6,71 +6,15 @@
 		"$schema": {
 			"type": "string"
 		},
-		"acmeEmail": {
-			"type": "string",
-			"format": "email",
-			"pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-		},
 		"artifacts": {
 			"type": "string",
 			"minLength": 1,
 			"description": "Folder `porch publish` copies into"
 		},
-		"caddy": {
-			"type": "object",
-			"properties": {
-				"admin": {
-					"type": "string",
-					"minLength": 1,
-					"description": "Caddy admin endpoint: a Unix socket in Caddy's form, e.g. unix//run/porchlight/caddy.sock (the porch init default), or a URL, e.g. http://127.0.0.1:2019"
-				},
-				"listen": {
-					"description": "Addresses Caddy serves porches on. Defaults to [\":443\"]",
-					"minItems": 1,
-					"type": "array",
-					"items": {
-						"type": "string",
-						"minLength": 1
-					}
-				},
-				"managed": {
-					"type": "boolean",
-					"description": "True when porch installed Caddy and owns its systemd unit"
-				}
-			},
-			"required": [
-				"admin",
-				"managed"
-			],
-			"additionalProperties": false
-		},
-		"dns": {
-			"type": "object",
-			"properties": {
-				"provider": {
-					"type": "string",
-					"const": "cloudflare"
-				},
-				"tokenEnv": {
-					"type": "string",
-					"minLength": 1,
-					"description": "Name of the env var that holds the DNS API token"
-				}
-			},
-			"required": [
-				"provider",
-				"tokenEnv"
-			],
-			"additionalProperties": false
-		},
 		"domain": {
 			"type": "string",
 			"minLength": 1,
 			"description": "The domain every porch lives under, e.g. gneiss.run"
-		},
-		"network": {
-			"type": "string",
-			"const": "tailscale"
 		},
 		"ports": {
 			"type": "object",
@@ -100,32 +44,42 @@
 			],
 			"additionalProperties": false
 		},
-		"tls": {
+		"proxy": {
 			"type": "object",
 			"properties": {
-				"issuer": {
+				"config": {
+					"description": "The proxy's own config file that imports the snippet, e.g. /etc/caddy/Caddyfile. `porch doctor` checks it has the import lines",
 					"type": "string",
-					"enum": [
-						"acme",
-						"internal"
-					],
-					"description": "acme: a real wildcard cert via DNS-01 (default). internal: Caddy's own CA, for tests and LAN-only setups"
+					"minLength": 1
+				},
+				"dir": {
+					"type": "string",
+					"minLength": 1,
+					"description": "Folder porch writes the snippet files into"
+				},
+				"kind": {
+					"type": "string",
+					"const": "caddy",
+					"description": "Which proxy the snippet is rendered for"
+				},
+				"reload": {
+					"description": "Shell command that makes the proxy load its config again, e.g. caddy reload --config /etc/caddy/Caddyfile. Leave it out to reload by hand",
+					"type": "string",
+					"minLength": 1
 				}
 			},
 			"required": [
-				"issuer"
+				"dir",
+				"kind"
 			],
 			"additionalProperties": false
 		}
 	},
 	"required": [
-		"acmeEmail",
 		"artifacts",
-		"caddy",
-		"dns",
 		"domain",
-		"network",
-		"ports"
+		"ports",
+		"proxy"
 	],
 	"additionalProperties": false,
 	"title": "Porchlight machine config"

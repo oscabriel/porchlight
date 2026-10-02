@@ -41,11 +41,15 @@ export const esc = (text: string) =>
 		.replaceAll("{", "&#123;")
 		.replaceAll("}", "&#125;");
 
-/** What a dark porch says. `upstream` is what it forwards to. `light` says how to start it, when porch knows. */
-export const darkPage = (name: string, upstream: string, light?: string) =>
+/**
+ * What a dark porch says. The three parts are HTML fragments, already
+ * escaped, or Caddy placeholders that expand to escaped text at request time.
+ * `upstream` is what it forwards to. `light` says how to start it, when porch knows.
+ */
+export const darkPage = (name: string, upstream: string, light: string) =>
 	page(
-		`${esc(name)} is dark`,
-		`<h1>${esc(name)} is dark</h1>
-<p>This porch exists, but nothing answers at <code>${esc(upstream)}</code>.</p>
-${light ? `<p>${light}</p>` : ""}`,
+		`${name} is dark`,
+		`<h1>${name} is dark</h1>
+<p>This porch exists, but nothing answers at <code>${upstream}</code>.</p>
+<p>${light}</p>`,
 	);

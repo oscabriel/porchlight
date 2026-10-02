@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { openPorchlight } from "../src/porchlight.ts";
@@ -12,6 +12,13 @@ let caddy: TestCaddy;
 let stateDir: string;
 const servers: { stop: (force?: boolean) => unknown }[] = [];
 
+const machine = (): MachineConfig => ({
+	artifacts: path.join(stateDir, "artifacts"),
+	domain: "porch.test",
+	ports: { range: [3001, 3999] },
+	proxy: { config: caddy.caddyfile, dir: caddy.snippetDir, kind: "caddy", reload: caddy.reload },
+});
+
 beforeAll(async () => {
 	caddy = await startCaddy();
 });
@@ -20,23 +27,14 @@ afterAll(async () => {
 });
 beforeEach(async () => {
 	stateDir = await mkdtemp(path.join(tmpdir(), "porch-state-"));
+	// Caddy still serves the previous test's snippet. Start each test from none.
+	await openPorchlight({ config: machine(), stateDir }).apply();
 });
 afterEach(async () => {
 	for (const server of servers.splice(0)) {
 		server.stop(true);
 	}
 	await rm(stateDir, { force: true, recursive: true });
-});
-
-const machine = (): MachineConfig => ({
-	acmeEmail: "admin@porch.test",
-	artifacts: path.join(stateDir, "artifacts"),
-	caddy: { admin: caddy.admin, listen: [`127.0.0.1:${caddy.httpsPort}`], managed: false },
-	dns: { provider: "cloudflare", tokenEnv: "UNUSED" },
-	domain: "porch.test",
-	network: "tailscale",
-	ports: { range: [3001, 3999] },
-	tls: { issuer: "internal" },
 });
 
 const upstream = (body: string) => {
@@ -112,16 +110,38 @@ test("adding a name that's already a porch is refused and the first porch keeps 
 	expect((await caddy.get("tv.porch.test")).body).toBe("first");
 });
 
-test("when Caddy rejects the config, porch reports it and neither Caddy nor the registry changes", async () => {
-	await openPorchlight({ config: machine(), stateDir }).add("tv", upstream("hello from tv"));
-	// Stock Caddy has no Cloudflare DNS module, so an acme issuer fails to load.
-	const acme = openPorchlight({ config: { ...machine(), tls: { issuer: "acme" } }, stateDir });
+test("when Caddy refuses to reload, porch says why, puts the old snippet back, and the registry doesn't change", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("hello from tv"));
+	await caddy.writeCaddyfile("\tnot_a_directive\n");
+	try {
+		await expect(porch.add("books", upstream("never"))).rejects.toThrow(
+			/caddy refused to reload, so nothing changed[^]*not_a_directive/u,
+		);
+	} finally {
+		await caddy.writeCaddyfile();
+	}
 
-	await expect(acme.add("books", upstream("never"))).rejects.toThrow(
-		/Caddy rejected the config: .*dns\.providers\.cloudflare/u,
+	expect(Object.keys(await porch.list())).toEqual(["tv"]);
+	const snippet = await Bun.file(path.join(caddy.snippetDir, "porches.caddy")).text();
+	expect(snippet).toContain("@tv host tv.porch.test");
+	expect(snippet).not.toContain("books");
+	expect((await caddy.get("tv.porch.test")).body).toBe("hello from tv");
+});
+
+test("without a reload command, porch writes the snippet and reports that Caddy wasn't reloaded", async () => {
+	const config = { ...machine(), proxy: { ...machine().proxy, reload: undefined } };
+	const porch = openPorchlight({ config, stateDir });
+
+	expect(await porch.add("tv", upstream("hello from tv"))).toEqual({ reloaded: false });
+
+	expect(await Bun.file(path.join(caddy.snippetDir, "porches.caddy")).text()).toContain(
+		"@tv host tv.porch.test",
 	);
-
-	expect(Object.keys(await acme.list())).toEqual(["tv"]);
+	expect((await caddy.get("tv.porch.test")).status).toBe(404);
+	expect(await openPorchlight({ config: machine(), stateDir }).apply()).toEqual({
+		reloaded: true,
+	});
 	expect((await caddy.get("tv.porch.test")).body).toBe("hello from tv");
 });
 
@@ -190,20 +210,19 @@ test("a static porch serves a folder and hides .git, .env files, and node_module
 	}
 });
 
-test("apply restores every porch after Caddy loses its config", async () => {
+test("apply writes the snippet again after it was deleted", async () => {
 	const porch = openPorchlight({ config: machine(), stateDir });
 	await porch.add("tv", upstream("tv"));
-	// What a Caddy restart without --resume looks like: only the admin endpoint survives.
-	const adminOnly = { admin: { listen: new URL(caddy.admin).host } };
-	await fetch(`${caddy.admin}/load`, {
-		body: JSON.stringify(adminOnly),
-		headers: { "Content-Type": "application/json" },
-		method: "POST",
-	});
+	await Promise.all(
+		["porches.caddy", "errors.caddy", "fallback.caddy"].map((file) =>
+			rm(path.join(caddy.snippetDir, file)),
+		),
+	);
 
 	await porch.apply();
 
 	expect((await caddy.get("tv.porch.test")).body).toBe("tv");
+	expect((await caddy.get("nobody.porch.test")).status).toBe(404);
 });
 
 test("rollback steps back through earlier states, one change at a time", async () => {
@@ -220,46 +239,6 @@ test("rollback steps back through earlier states, one change at a time", async (
 	expect(await porch.list()).toEqual({});
 
 	await expect(porch.rollback()).rejects.toThrow("Nothing to roll back to");
-});
-
-test("rollback restores a config porch didn't write, such as Caddy's config before porch took over", async () => {
-	const before = {
-		admin: { listen: new URL(caddy.admin).host },
-		apps: {
-			http: {
-				servers: {
-					old: {
-						automatic_https: { disable_redirects: true },
-						listen: [`127.0.0.1:${caddy.httpsPort}`],
-						routes: [
-							{
-								handle: [{ body: "old setup", handler: "static_response" }],
-								match: [{ host: ["old.porch.test"] }],
-							},
-						],
-					},
-				},
-			},
-			pki: { certificate_authorities: { local: { install_trust: false } } },
-			tls: {
-				automation: {
-					policies: [{ issuers: [{ module: "internal" }], subjects: ["old.porch.test"] }],
-				},
-			},
-		},
-	};
-	const loaded = await fetch(`${caddy.admin}/load`, {
-		body: JSON.stringify(before),
-		headers: { "Content-Type": "application/json" },
-		method: "POST",
-	});
-	expect(loaded.status).toBe(200);
-	const porch = openPorchlight({ config: machine(), stateDir });
-	await porch.add("tv", upstream("tv"));
-
-	await porch.rollback();
-
-	expect(await caddy.get("old.porch.test")).toEqual({ body: "old setup", status: 200 });
 });
 
 test("status reports each porch as lit or dark", async () => {
@@ -447,28 +426,44 @@ test("docs renders the porches as Markdown tables, services first, then dev serv
 `);
 });
 
-test("porch drives a Caddy whose admin API is a Unix socket only this user can open", async () => {
-	const socketCaddy = await startCaddy({ adminSocket: true });
-	try {
-		const config = {
-			...machine(),
-			caddy: {
-				admin: socketCaddy.admin,
-				listen: [`127.0.0.1:${socketCaddy.httpsPort}`],
-				managed: false,
-			},
-		};
-		const porch = openPorchlight({ config, stateDir });
+test("check fetches every porch through Caddy with the certificate verified", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("tv"));
+	await porch.add("gone", upstream("gone"));
+	servers.pop()?.stop(true);
 
-		await porch.add("tv", upstream("tv"));
-		await porch.add("books", upstream("books"));
-		await porch.rollback();
+	const served = await porch.check({
+		ca: await caddy.rootCa(),
+		port: caddy.httpsPort,
+		waitMs: 5000,
+	});
 
-		expect(await socketCaddy.get("tv.porch.test")).toEqual({ body: "tv", status: 200 });
-		expect((await socketCaddy.get("books.porch.test")).status).toBe(404);
-		const socket = socketCaddy.admin.slice("unix/".length);
-		expect(((await stat(socket)).mode % 0o1000).toString(8)).toBe("600");
-	} finally {
-		await socketCaddy.stop();
-	}
+	expect(served).toEqual([
+		{ name: "gone", status: 502 },
+		{ name: "tv", status: 200 },
+	]);
+});
+
+test("the snippet is a Caddyfile a person can read: one matcher and handle per porch, dark pages in one block", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.adopt({
+		ristretto: { kind: "dev", port: 3001, project: "~/x", start: "bun run dev" },
+		tv: { kind: "service", upstream: "http://192.168.1.10:8989" },
+	});
+
+	const snippet = await porch.render();
+
+	expect(snippet["porches.caddy"]).toContain(`@ristretto host ristretto.porch.test
+handle @ristretto {
+	reverse_proxy 127.0.0.1:3001
+}
+@tv host tv.porch.test
+handle @tv {
+	reverse_proxy 192.168.1.10:8989
+}`);
+	expect(snippet["errors.caddy"]).toContain("handle_errors 502 504 {");
+	expect(snippet["errors.caddy"]).toContain(
+		'ristretto.porch.test ristretto http://127.0.0.1:3001 "Start it with <code>bun run dev</code> in <code>~/x</code>."',
+	);
+	expect(snippet["fallback.caddy"]).toContain("HTML 404");
 });

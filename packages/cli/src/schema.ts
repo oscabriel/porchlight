@@ -19,44 +19,40 @@ export const PorchName = z
 
 const Port = z.number().int().min(1).max(65_535);
 
+/**
+ * The reverse proxy the user runs. Porch writes a snippet into `dir` and
+ * asks the proxy to reload with `reload`. It never touches the proxy's own
+ * config, which is what `config` points at.
+ */
+const ProxySchema = z.object({
+	config: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"The proxy's own config file that imports the snippet, e.g. /etc/caddy/Caddyfile. `porch doctor` checks it has the import lines",
+		),
+	dir: z.string().min(1).describe("Folder porch writes the snippet files into"),
+	kind: z.literal("caddy").describe("Which proxy the snippet is rendered for"),
+	reload: z
+		.string()
+		.min(1)
+		.optional()
+		.describe(
+			"Shell command that makes the proxy load its config again, e.g. caddy reload --config /etc/caddy/Caddyfile. Leave it out to reload by hand",
+		),
+});
+
 /** `~/.config/porchlight/config.json`, one per machine, written by `porch init`. */
 export const MachineConfigSchema = z
 	.object({
 		$schema: z.string().optional(),
-		acmeEmail: z.email(),
 		artifacts: z.string().min(1).describe("Folder `porch publish` copies into"),
-		caddy: z.object({
-			admin: z
-				.string()
-				.min(1)
-				.describe(
-					"Caddy admin endpoint: a Unix socket in Caddy's form, e.g. unix//run/porchlight/caddy.sock (the porch init default), or a URL, e.g. http://127.0.0.1:2019",
-				),
-			listen: z
-				.array(z.string().min(1))
-				.min(1)
-				.optional()
-				.describe('Addresses Caddy serves porches on. Defaults to [":443"]'),
-			managed: z.boolean().describe("True when porch installed Caddy and owns its systemd unit"),
-		}),
-		dns: z.object({
-			provider: z.literal("cloudflare"),
-			tokenEnv: z.string().min(1).describe("Name of the env var that holds the DNS API token"),
-		}),
 		domain: z.string().min(1).describe("The domain every porch lives under, e.g. gneiss.run"),
-		network: z.literal("tailscale"),
 		ports: z.object({
 			range: z.tuple([Port, Port]).describe("Inclusive range porch leases dev ports from"),
 		}),
-		tls: z
-			.object({
-				issuer: z
-					.enum(["acme", "internal"])
-					.describe(
-						"acme: a real wildcard cert via DNS-01 (default). internal: Caddy's own CA, for tests and LAN-only setups",
-					),
-			})
-			.optional(),
+		proxy: ProxySchema,
 	})
 	.meta({ title: "Porchlight machine config" });
 
@@ -66,7 +62,7 @@ const SplitRoute = z.object({
 	port: Port,
 });
 
-// Shown by `porch docs` and `porch ls`. Neither changes what Caddy serves.
+// Shown by `porch docs` and `porch ls`. Neither changes what the proxy serves.
 const described = {
 	about: z.string().optional().describe("What it's for, one line"),
 	label: z.string().optional().describe("Display name, e.g. Jellyfin. Defaults to the porch name"),
@@ -127,6 +123,7 @@ export const ProjectConfigSchema = z
 	.meta({ title: "Porchlight project config" });
 
 export type MachineConfig = z.infer<typeof MachineConfigSchema>;
+export type ProxyConfig = z.infer<typeof ProxySchema>;
 export type Porch = z.infer<typeof PorchSchema>;
 export type Registry = z.infer<typeof RegistrySchema>;
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;

@@ -6,13 +6,10 @@ import adapted from "./fixtures/caddyfile-adapted.json" with { type: "json" };
 // The fixture is `caddy adapt` output for a real hand-written Caddyfile (one
 // `*.example.com` site block of host matchers), with names and addresses scrubbed.
 const config: MachineConfig = {
-	acmeEmail: "admin@example.com",
 	artifacts: "/home/me/Developer/agent-artifacts",
-	caddy: { admin: "http://127.0.0.1:2019", managed: true },
-	dns: { provider: "cloudflare", tokenEnv: "CLOUDFLARE_API_TOKEN" },
 	domain: "example.com",
-	network: "tailscale",
 	ports: { range: [3001, 3999] },
+	proxy: { dir: "/home/me/.config/porchlight/caddy", kind: "caddy" },
 };
 
 const service = (upstream: string): Porch => ({ kind: "service", upstream });

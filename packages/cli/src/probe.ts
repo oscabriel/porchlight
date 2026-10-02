@@ -64,11 +64,11 @@ export const probe = async (config: MachineConfig, porch: Porch): Promise<PorchS
 export type Served = { status: number } | { error: string };
 
 /**
- * GETs `https://<host>/` from this machine's Caddy on `port`, verifying its
+ * GETs `https://<host>/` from this machine's proxy on `port`, verifying its
  * certificate for `host` (against `ca` when given, else the system's roots).
- * Retries failures for `waitMs`, since Caddy gets certificates after a load.
+ * Retries failures for `waitMs`, since Caddy gets certificates after a reload.
  */
-export const throughCaddy = async (
+export const throughProxy = async (
 	host: string,
 	port: number,
 	{ ca, waitMs = 0 }: { ca?: string; waitMs?: number } = {},

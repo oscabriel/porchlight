@@ -1,5 +1,6 @@
-// What was live before each change: Caddy's config as Caddy reported it, and
-// the registry. Rollback pops the newest entry. Callers hold the state lock.
+// The registry as it was before each change. Rollback pops the newest entry
+// and applies it again: rendering is deterministic, so the registry is all
+// that needs keeping. Callers hold the state lock.
 import { mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { Registry } from "./schema.ts";
@@ -8,8 +9,6 @@ const KEEP = 20;
 
 export interface HistoryEntry {
 	at: string;
-	/** Caddy's whole config, from `GET /config/`. `null` when Caddy had none. */
-	caddy: unknown;
 	registry: Registry;
 }
 
