@@ -1,6 +1,8 @@
 // Turns an existing Caddy JSON config (`caddy adapt` output, or GET /config/
 // from a running Caddy) into porches. Anything it can't map exactly is
 // reported in `skipped`, never approximated.
+import { isAdminAddress, liveCaddyConfig } from "./caddy-admin.ts";
+import { PorchError } from "./errors.ts";
 import { expandHome } from "./paths.ts";
 import type { MachineConfig, Porch } from "./schema.ts";
 
@@ -212,4 +214,47 @@ export const importCaddyConfig = (caddyConfig: unknown, config: MachineConfig) =
 	}
 	skipped.sort((a, b) => a.host.localeCompare(b.host));
 	return { porches, skipped };
+};
+
+/** Stdout of `caddy adapt` on a Caddyfile, run with the given caddy binary. */
+const adaptCaddyfile = async (caddy: string, file: string) => {
+	const proc = Bun.spawn([caddy, "adapt", "--config", file], { stderr: "pipe", stdout: "pipe" });
+	const [stdout, stderr, code] = await Promise.all([
+		new Response(proc.stdout).text(),
+		new Response(proc.stderr).text(),
+		proc.exited,
+	]);
+	if (code !== 0) {
+		throw new PorchError("import-failed", `caddy adapt refused ${file}:\n${stderr.trim()}`);
+	}
+	return JSON.parse(stdout) as unknown;
+};
+
+/**
+ * A Caddy config to import from: a running Caddy's admin address, a JSON
+ * file (`caddy adapt` output or a saved `GET /config/`), or a Caddyfile,
+ * which porch adapts with the `caddy` binary on PATH.
+ */
+export const readCaddyConfig = async (from: string): Promise<unknown> => {
+	if (isAdminAddress(from)) {
+		return liveCaddyConfig(from);
+	}
+	const file = Bun.file(from);
+	if (!(await file.exists())) {
+		throw new PorchError("import-failed", `${from} doesn't exist.`);
+	}
+	const text = await file.text();
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		// Not JSON, so a Caddyfile.
+	}
+	const caddy = Bun.which("caddy", { PATH: process.env.PATH ?? "" });
+	if (!caddy) {
+		throw new PorchError(
+			"import-failed",
+			`${from} looks like a Caddyfile, and adapting it needs a \`caddy\` binary on PATH. Install Caddy, or run \`caddy adapt --config ${from} > caddy.json\` where it is and pass that file.`,
+		);
+	}
+	return adaptCaddyfile(caddy, from);
 };
