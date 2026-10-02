@@ -34,6 +34,18 @@ const issuer = (config: MachineConfig) =>
 				module: "acme",
 			};
 
+/** Serves a folder, listing directories that have no index.html. */
+const fileServer = (root: string) => ({
+	browse: {},
+	handler: "file_server",
+	hide: HIDDEN,
+	root: expandHome(root),
+});
+
+const compress = {
+	handle: [{ encodings: { gzip: {}, zstd: {} }, handler: "encode", prefer: ["zstd", "gzip"] }],
+};
+
 const proxy = (dial: string) => ({ handler: "reverse_proxy", upstreams: [{ dial }] });
 
 const IP_LITERAL = /^(?:\d{1,3}(?:\.\d{1,3}){3}|\[[\da-f:]+\])$/iu;
@@ -57,7 +69,7 @@ const serviceProxy = (upstream: string) => {
 };
 
 /** The routes inside one porch's host match. */
-const porchRoutes = (porch: Porch): Route[] => {
+const porchRoutes = (porch: Porch, config: MachineConfig): Route[] => {
 	switch (porch.kind) {
 		case "dev": {
 			const split = (porch.split ?? []).map((s) => ({
@@ -74,26 +86,24 @@ const porchRoutes = (porch: Porch): Route[] => {
 			return [...redirects, { handle: [serviceProxy(porch.upstream)] }];
 		}
 		case "static": {
+			// no-cache, not no-store: browsers keep the file but revalidate, so an
+			// edit shows up on the next load without a hard refresh.
 			const noCache = porch.noCache
-				? [{ handler: "headers", response: { set: { "Cache-Control": ["no-store"] } } }]
+				? [{ handler: "headers", response: { set: { "Cache-Control": ["no-cache"] } } }]
 				: [];
-			return [
-				{
-					handle: [
-						...noCache,
-						{ handler: "file_server", hide: HIDDEN, root: expandHome(porch.root) },
-					],
-				},
-			];
+			return [{ handle: [...noCache, fileServer(porch.root)] }];
+		}
+		case "artifacts": {
+			return [{ handle: [fileServer(config.artifacts)] }];
 		}
 		default: {
-			throw new Error(`porch kind ${porch.kind} is not built yet`);
+			throw new Error(`unknown porch kind in ${JSON.stringify(porch satisfies never)}`);
 		}
 	}
 };
 
-const porchRoute = (host: string, porch: Porch): Route => ({
-	handle: [{ handler: "subroute", routes: porchRoutes(porch) }],
+const porchRoute = (host: string, porch: Porch, config: MachineConfig): Route => ({
+	handle: [{ handler: "subroute", routes: porchRoutes(porch, config) }],
 	match: [{ host: [host] }],
 	terminal: true,
 });
@@ -152,10 +162,13 @@ const darkRoute = (
 
 export const renderCaddyConfig = (config: MachineConfig, registry: Registry) => {
 	const wildcard = `*.${config.domain}`;
-	const routes = Object.entries(registry.porches).map(([name, porch]) =>
-		porchRoute(`${name}.${config.domain}`, porch),
-	);
-	routes.push({ handle: [html(404, fallbackPage(config.domain))] });
+	const routes = [
+		compress,
+		...Object.entries(registry.porches).map(([name, porch]) =>
+			porchRoute(`${name}.${config.domain}`, porch, config),
+		),
+		{ handle: [html(404, fallbackPage(config.domain))] },
+	];
 	const darkRoutes = Object.entries(registry.porches).flatMap(
 		([name, porch]) => darkRoute(`${name}.${config.domain}`, name, porch, config) ?? [],
 	);

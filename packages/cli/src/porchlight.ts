@@ -5,6 +5,7 @@
 import path from "node:path";
 import { createCaddyAdmin } from "./caddy-admin.ts";
 import { PorchError } from "./errors.ts";
+import { renderDocs } from "./docs.ts";
 import { newestHistory, pushHistory } from "./history.ts";
 import { withLock } from "./lock.ts";
 import { probe } from "./probe.ts";
@@ -127,5 +128,14 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 		);
 	};
 
-	return { add, adopt, apply, list, rm, rollback, serve, status };
+	/** Caddy's whole live config, as its admin API reports it. */
+	const liveCaddyConfig = async () => {
+		const live = await caddy.current();
+		return live.config;
+	};
+
+	/** Markdown URL tables for every porch. */
+	const docs = async () => renderDocs(config, await list());
+
+	return { add, adopt, apply, docs, list, liveCaddyConfig, rm, rollback, serve, status };
 };

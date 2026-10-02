@@ -17,6 +17,14 @@
 					{
 						"type": "object",
 						"properties": {
+							"about": {
+								"description": "What it's for, one line",
+								"type": "string"
+							},
+							"label": {
+								"description": "Display name, e.g. Jellyfin. Defaults to the porch name",
+								"type": "string"
+							},
 							"kind": {
 								"type": "string",
 								"const": "dev"
@@ -74,12 +82,17 @@
 					{
 						"type": "object",
 						"properties": {
+							"about": {
+								"description": "What it's for, one line",
+								"type": "string"
+							},
+							"label": {
+								"description": "Display name, e.g. Jellyfin. Defaults to the porch name",
+								"type": "string"
+							},
 							"kind": {
 								"type": "string",
 								"const": "service"
-							},
-							"label": {
-								"type": "string"
 							},
 							"redirect": {
 								"type": "object",
@@ -104,6 +117,14 @@
 					{
 						"type": "object",
 						"properties": {
+							"about": {
+								"description": "What it's for, one line",
+								"type": "string"
+							},
+							"label": {
+								"description": "Display name, e.g. Jellyfin. Defaults to the porch name",
+								"type": "string"
+							},
 							"kind": {
 								"type": "string",
 								"const": "static"
@@ -125,6 +146,14 @@
 					{
 						"type": "object",
 						"properties": {
+							"about": {
+								"description": "What it's for, one line",
+								"type": "string"
+							},
+							"label": {
+								"description": "Display name, e.g. Jellyfin. Defaults to the porch name",
+								"type": "string"
+							},
 							"kind": {
 								"type": "string",
 								"const": "artifacts"

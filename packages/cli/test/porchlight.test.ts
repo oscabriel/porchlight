@@ -359,3 +359,76 @@ test("a service porch can forward to an https upstream", async () => {
 
 	expect(await caddy.get("nas.porch.test")).toEqual({ body: "over tls", status: 200 });
 });
+
+test("responses are compressed when the client accepts it", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.add("tv", upstream("x".repeat(4096)));
+
+	expect(
+		(await caddy.headers("tv.porch.test", "/", ["Accept-Encoding: zstd, gzip"]))[
+			"content-encoding"
+		],
+	).toBe("zstd");
+});
+
+test("static porches list folders without an index, and noCache asks browsers to revalidate", async () => {
+	const root = path.join(stateDir, "depot");
+	await mkdir(path.join(root, "lessons"), { recursive: true });
+	await writeFile(path.join(root, "lessons", "one.html"), "lesson one");
+	const porch = openPorchlight({ config: machine(), stateDir });
+
+	await porch.adopt({ depot: { kind: "static", noCache: true, root } });
+
+	const listing = await caddy.get("depot.porch.test", "/lessons/", ["Accept: text/html"]);
+	expect(listing.status).toBe(200);
+	expect(listing.body).toContain("one.html");
+	expect((await caddy.headers("depot.porch.test", "/lessons/one.html"))["cache-control"]).toBe(
+		"no-cache",
+	);
+});
+
+test("the artifacts porch serves the machine's artifacts folder", async () => {
+	const config = machine();
+	await mkdir(path.join(config.artifacts, "porchlight"), { recursive: true });
+	await writeFile(path.join(config.artifacts, "porchlight", "plan.html"), "the plan");
+	const porch = openPorchlight({ config, stateDir });
+
+	await porch.adopt({ plans: { kind: "artifacts" } });
+
+	expect(await caddy.get("plans.porch.test", "/porchlight/plan.html")).toEqual({
+		body: "the plan",
+		status: 200,
+	});
+	expect((await caddy.get("plans.porch.test", "/porchlight/")).body).toContain("plan.html");
+});
+
+test("docs renders the porches as Markdown tables, services first, then dev servers", async () => {
+	const porch = openPorchlight({ config: machine(), stateDir });
+	await porch.adopt({
+		depot: { about: "Lesson files", kind: "static", label: "Teach Depot", root: stateDir },
+		ristretto: { kind: "dev", port: 3001 },
+		thinkspace: {
+			kind: "dev",
+			label: "Thinkspace",
+			port: 3002,
+			split: [{ paths: ["/rpc*"], port: 3003 }],
+		},
+		watch: {
+			about: "Media streaming",
+			kind: "service",
+			label: "Jellyfin",
+			upstream: "http://127.0.0.1:8096",
+		},
+	});
+
+	expect(await porch.docs()).toBe(`| Service | URL | Purpose |
+|---------|-----|---------|
+| Teach Depot | https://depot.porch.test | Lesson files |
+| Jellyfin | https://watch.porch.test | Media streaming |
+
+| Project | URL | Port(s) |
+|---------|-----|---------|
+| ristretto | https://ristretto.porch.test | 3001 |
+| Thinkspace | https://thinkspace.porch.test | 3002, 3003 |
+`);
+});

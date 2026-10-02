@@ -6,9 +6,20 @@ import { PorchError } from "./errors.ts";
 export const createCaddyAdmin = (admin: string) => {
 	const base = admin.replace(/\/+$/u, "");
 
+	const call = async (init?: RequestInit) => {
+		try {
+			return await fetch(`${base}/config/`, init);
+		} catch (error) {
+			throw new PorchError(
+				"caddy-unreachable",
+				`Can't reach Caddy's admin API at ${base} (${(error as Error).message}). Is Caddy running?`,
+			);
+		}
+	};
+
 	/** Caddy's whole config (`null` when empty) and the ETag to replace it with. */
 	const current = async () => {
-		const res = await fetch(`${base}/config/`);
+		const res = await call();
 		if (!res.ok) {
 			throw new PorchError(
 				"caddy-unreachable",
@@ -20,7 +31,7 @@ export const createCaddyAdmin = (admin: string) => {
 
 	/** Replaces the whole config, failing if someone else changed it since `expected`. */
 	const replace = async (config: unknown, expected: string) => {
-		const res = await fetch(`${base}/config/`, {
+		const res = await call({
 			body: JSON.stringify(config),
 			headers: { "Content-Type": "application/json", "If-Match": expected },
 			method: "POST",

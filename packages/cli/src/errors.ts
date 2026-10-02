@@ -1,4 +1,6 @@
 export type PorchErrorCode =
+	| "bad-config"
+	| "no-config"
 	| "busy"
 	| "caddy-conflict"
 	| "caddy-rejected"

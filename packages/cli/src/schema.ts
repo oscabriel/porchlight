@@ -61,7 +61,14 @@ const SplitRoute = z.object({
 	port: Port,
 });
 
+// Shown by `porch docs` and `porch ls`. Neither changes what Caddy serves.
+const described = {
+	about: z.string().optional().describe("What it's for, one line"),
+	label: z.string().optional().describe("Display name, e.g. Jellyfin. Defaults to the porch name"),
+};
+
 const DevPorch = z.object({
+	...described,
 	kind: z.literal("dev"),
 	port: Port.describe("The leased port. It never changes once assigned"),
 	project: z.string().optional(),
@@ -70,19 +77,21 @@ const DevPorch = z.object({
 });
 
 const ServicePorch = z.object({
+	...described,
 	kind: z.literal("service"),
-	label: z.string().optional(),
 	redirect: z.record(z.string(), z.string()).optional(),
 	upstream: z.url(),
 });
 
 const StaticPorch = z.object({
+	...described,
 	kind: z.literal("static"),
 	noCache: z.boolean().optional(),
 	root: z.string().min(1),
 });
 
 const ArtifactsPorch = z.object({
+	...described,
 	kind: z.literal("artifacts"),
 });
 
