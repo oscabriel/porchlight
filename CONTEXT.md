@@ -69,28 +69,36 @@ The ports porch leases from on this machine.
 ### State
 
 **Registry**:
-Every porch on this machine. It is the single source of truth for what Caddy serves.
+Every porch on this machine. It is the single source of truth for what the snippet contains.
 _Avoid_: routes file, route table
 
 **Machine config**:
-The per-machine settings: domain, DNS provider, private network, and how to reach Caddy.
+The per-machine settings: domain, port range, the artifacts folder, and the proxy: which kind, where the snippet goes, and the reload command.
 _Avoid_: global config, settings
+
+**Proxy**:
+The reverse proxy the user runs and owns, which serves the porches. Caddy first. Porch never installs, starts, or configures it beyond the snippet.
+_Avoid_: server, gateway, porch's Caddy
+
+**Snippet**:
+The file porch renders from the registry for the proxy to import. The user's own proxy config includes it with one line. It is the only thing porch writes for the proxy.
+_Avoid_: config, Caddyfile, routes
 
 **Project config**:
 Optional settings a project carries to choose its porch name or pin its port.
 _Avoid_: local config
 
 **Apply**:
-Making Caddy serve exactly what the registry says, in one atomic swap. Either all of it takes effect or none of it does.
-_Avoid_: reload, sync, deploy
+Rendering the snippet from the registry, validating it, writing it, and asking the proxy to reload. Either all of it takes effect or none of it does, because the proxy refuses a bad config and keeps serving the old one.
+_Avoid_: sync, deploy
 
 **Rollback**:
-Applying an earlier applied config again.
+Applying an earlier registry again.
 _Avoid_: undo, revert
 
 ## Relationships
 
 - A **porch** has exactly one **porch name** and one **upstream**, and is always **lit** or **dark**.
 - A **dev porch** holds exactly one **lease**. A **worktree porch** is a **dev porch**.
-- The **registry** holds every **porch**. **Apply** turns the **registry** plus the **machine config** into what Caddy serves.
+- The **registry** holds every **porch**. **Apply** turns the **registry** plus the **machine config** into the **snippet**, and the **proxy** serves what the **snippet** says.
 - A dark **porch** shows its **dark page**. A name with no **porch** shows the **fallback page**.

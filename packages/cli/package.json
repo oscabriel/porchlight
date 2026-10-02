@@ -1,7 +1,7 @@
 {
 	"name": "porchlight",
 	"version": "0.0.0",
-	"description": "Named HTTPS URLs on your own domain for dev servers, services, and static folders, reachable from every device on your private network. Drives Caddy through its admin API.",
+	"description": "Named HTTPS URLs on your own domain for dev servers, services, and static folders, reachable from every device on your private network. Writes a snippet your own Caddy imports.",
 	"license": "MIT",
 	"author": "oscabriel",
 	"repository": {
