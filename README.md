@@ -13,7 +13,7 @@ Porchlight drives [Caddy](https://caddyserver.com) through its admin API. It ren
 
 It's for people whose browser and dev server run on different machines: a home server, a cloud VM, a box an agent works on overnight.
 
-**Status:** pre-alpha. The core commands (`add`, `serve`, `rm`, `ls`, `url`, `docs`, `apply`, `rollback`, `import caddy`, `doctor`) work against a Caddy you already run. `porch init`, `porch run`, `porch publish`, and the Vite plugin aren't built yet.
+**Status:** pre-alpha. `porch init` sets up a Linux machine with systemd: Cloudflare DNS, Caddy with the Cloudflare module, a systemd unit, and a move from a Caddy you already run without a gap. The core commands (`add`, `serve`, `rm`, `ls`, `url`, `docs`, `apply`, `rollback`, `import caddy`, `doctor`) work. `porch run`, `porch publish`, and the Vite plugin aren't built yet.
 
 ## License
 

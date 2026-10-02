@@ -13,6 +13,7 @@ import type { MachineConfig } from "./schema.ts";
 const USAGE = `porch ${pkg.version}: named HTTPS URLs on your own domain
 
 Usage:
+  porch init                      Set this machine up, or bring it up to date
   porch add <name> <upstream>     A service porch, e.g. porch add tv http://192.168.1.10:8989
   porch serve <name> <dir>        A static porch for a folder
   porch rm <name>                 Remove a porch
@@ -28,9 +29,14 @@ Options:
   --json                          Print JSON on stdout
   --label <text>, --about <text>  Display name and purpose, for ls and docs
   --no-cache                      (serve) Ask browsers to revalidate every file
+  --domain, --email, --artifacts  (init) Answers instead of prompts
+  --staging-port <port>           (init) Where porch's Caddy serves while an old Caddy
+                                  still holds :443. Default 8443
   --from <file|admin>             (import) Read a Caddy JSON file, or another Caddy's admin
                                   API (http://127.0.0.1:2019, unix//path/to/admin.sock)
-  --dry-run                       (import) Show what would be imported, change nothing
+  --dry-run                       (import, init) Show what would happen, change nothing
+                                  (init --from) Admin API of the Caddy to replace.
+                                  Default http://127.0.0.1:2019
 `;
 
 class UsageError extends Error {
@@ -44,12 +50,16 @@ const { positionals, values } = (() => {
 			args: process.argv.slice(2),
 			options: {
 				about: { type: "string" },
+				artifacts: { type: "string" },
+				domain: { type: "string" },
 				"dry-run": { type: "boolean" },
+				email: { type: "string" },
 				from: { type: "string" },
 				help: { short: "h", type: "boolean" },
 				json: { type: "boolean" },
 				label: { type: "string" },
 				"no-cache": { type: "boolean" },
+				"staging-port": { type: "string" },
 				version: { short: "v", type: "boolean" },
 			},
 		});
@@ -192,6 +202,22 @@ const run = async () => {
 	}
 	if (!command) {
 		throw new UsageError("no command given");
+	}
+	if (command === "init") {
+		need(args, 0, "porch init [--dry-run]");
+		const { init } = await import("./init.ts");
+		const stagingPort = Number(values["staging-port"] ?? 8443);
+		if (!Number.isInteger(stagingPort) || stagingPort < 1 || stagingPort > 65_535) {
+			throw new UsageError("--staging-port must be a port number");
+		}
+		return init({
+			dryRun: values["dry-run"] === true,
+			from: values.from ?? "http://127.0.0.1:2019",
+			stagingPort,
+			...(values.artifacts !== undefined && { artifacts: values.artifacts }),
+			...(values.domain !== undefined && { domain: values.domain }),
+			...(values.email !== undefined && { email: values.email }),
+		});
 	}
 	const handler = commands[command];
 	if (!handler) {

@@ -1,9 +1,11 @@
 // `porch doctor`: checks everything porch depends on and changes nothing.
 // Each check reports ok or not with one line of detail.
-import { resolve4 } from "node:dns/promises";
+import { Resolver, resolve4 } from "node:dns/promises";
 import { networkInterfaces } from "node:os";
 import { connect } from "node:tls";
 import { adminAddress, adminFetch } from "./caddy-admin.ts";
+import { installedCaddyVersion, isOlder, latestCaddyVersion } from "./caddy-install.ts";
+import { managedCaddyFiles } from "./machine.ts";
 import type { MachineConfig } from "./schema.ts";
 
 export interface Check {
@@ -116,9 +118,19 @@ const dnsChecks = async (config: MachineConfig): Promise<Check[]> => {
 	try {
 		addresses = await resolve4(probe);
 	} catch (error) {
+		const { code } = error as NodeJS.ErrnoException;
+		const publicDns = new Resolver({ timeout: 3000, tries: 1 });
+		publicDns.setServers(["1.1.1.1"]);
+		const elsewhere = await publicDns.resolve4(probe).catch(() => []);
+		// Many routers drop public answers that point at private addresses
+		// ("DNS rebinding protection"), and the lookup then fails only here.
+		const rebinding =
+			elsewhere.length > 0
+				? `. 1.1.1.1 answers ${elsewhere.join(", ")}, so the resolver this machine uses is dropping it. Usually that's a router's DNS rebinding protection: allow ${config.domain} in its settings, or use Tailscale's DNS`
+				: "";
 		return [
 			{
-				detail: `${probe} didn't resolve: ${(error as NodeJS.ErrnoException).code}`,
+				detail: `${probe} didn't resolve: ${code}${rebinding}`,
 				name: `*.${config.domain} resolves`,
 				ok: false,
 			},
@@ -191,6 +203,38 @@ const certCheck = (config: MachineConfig): Promise<Check[]> => {
 	return promise;
 };
 
+const caddyVersionCheck = async (config: MachineConfig): Promise<Check[]> => {
+	if (!config.caddy.managed) {
+		return [];
+	}
+	const [installed, latest] = await Promise.all([
+		installedCaddyVersion(managedCaddyFiles().binary),
+		latestCaddyVersion(),
+	]);
+	if (!installed) {
+		return [
+			{
+				detail: `no Caddy at ${managedCaddyFiles().binary}. Run \`porch init\``,
+				name: "Caddy is up to date",
+				ok: false,
+			},
+		];
+	}
+	if (!latest) {
+		return [];
+	}
+	const behind = isOlder(installed, latest);
+	return [
+		{
+			detail: behind
+				? `${installed} installed, ${latest} is out. Run \`porch init\` again to upgrade`
+				: `${installed}`,
+			name: "Caddy is up to date",
+			ok: !behind,
+		},
+	];
+};
+
 const networkCheck = async (config: MachineConfig): Promise<Check[]> => {
 	if (config.network !== "tailscale") {
 		return [];
@@ -208,6 +252,7 @@ export const doctor = async (config: MachineConfig): Promise<Check[]> => {
 		port443Check(),
 		dnsChecks(config),
 		certCheck(config),
+		caddyVersionCheck(config),
 		networkCheck(config),
 	]);
 	return groups.flat();

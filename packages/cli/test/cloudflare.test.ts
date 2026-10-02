@@ -82,3 +82,18 @@ test("a token that can't edit the zone's DNS gets one fix: which permission it n
 		expect(cf.writes).toEqual([]);
 	}
 });
+
+test("a dry run reports a missing record without creating it", async () => {
+	const cf = fake();
+
+	const result = await ensureWildcardRecord({
+		api: cf.api,
+		domain: "porch.test",
+		dryRun: true,
+		ip: "100.64.0.7",
+		token: TOKEN,
+	});
+
+	expect(result).toEqual({ action: "missing", ip: "100.64.0.7", name: "*.porch.test" });
+	expect(cf.writes).toEqual([]);
+});

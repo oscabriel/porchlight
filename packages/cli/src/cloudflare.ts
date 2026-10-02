@@ -21,6 +21,8 @@ export interface WildcardRecordOptions {
 	/** The v4 API base. Tests point it at a fake. */
 	api?: string;
 	domain: string;
+	/** Report what's missing instead of creating it. */
+	dryRun?: boolean;
 	ip: string;
 	token: string;
 }
@@ -28,6 +30,7 @@ export interface WildcardRecordOptions {
 export const ensureWildcardRecord = async ({
 	api = CLOUDFLARE_API,
 	domain,
+	dryRun = false,
 	ip,
 	token,
 }: WildcardRecordOptions) => {
@@ -63,6 +66,9 @@ export const ensureWildcardRecord = async ({
 			"dns-conflict",
 			`${name} is already set (${other.type} ${other.content}${proxied}). Porch won't change a record it didn't make. In Cloudflare, point it at ${ip} as an unproxied A record, or delete it, then run \`porch init\` again.`,
 		);
+	}
+	if (dryRun) {
+		return { action: "missing" as const, ip, name };
 	}
 	await call(`/zones/${zone.id}/dns_records`, {
 		body: JSON.stringify({ content: ip, name, proxied: false, ttl: 1, type: "A" }),
