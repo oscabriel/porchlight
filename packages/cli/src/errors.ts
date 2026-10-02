@@ -5,6 +5,8 @@ export type PorchErrorCode =
 	| "caddy-conflict"
 	| "caddy-rejected"
 	| "caddy-unreachable"
+	| "dns-conflict"
+	| "dns-denied"
 	| "exists"
 	| "invalid-name"
 	| "missing"
