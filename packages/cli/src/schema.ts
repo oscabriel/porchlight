@@ -27,6 +27,11 @@ export const MachineConfigSchema = z
 		artifacts: z.string().min(1).describe("Folder `porch publish` copies into"),
 		caddy: z.object({
 			admin: z.string().min(1).describe("Caddy admin endpoint, e.g. http://127.0.0.1:2019"),
+			listen: z
+				.array(z.string().min(1))
+				.min(1)
+				.optional()
+				.describe('Addresses Caddy serves porches on. Defaults to [":443"]'),
 			managed: z.boolean().describe("True when porch installed Caddy and owns its systemd unit"),
 		}),
 		dns: z.object({
@@ -38,6 +43,15 @@ export const MachineConfigSchema = z
 		ports: z.object({
 			range: z.tuple([Port, Port]).describe("Inclusive range porch leases dev ports from"),
 		}),
+		tls: z
+			.object({
+				issuer: z
+					.enum(["acme", "internal"])
+					.describe(
+						"acme: a real wildcard cert via DNS-01 (default). internal: Caddy's own CA, for tests and LAN-only setups",
+					),
+			})
+			.optional(),
 	})
 	.meta({ title: "Porchlight machine config" });
 

@@ -24,6 +24,15 @@
 					"minLength": 1,
 					"description": "Caddy admin endpoint, e.g. http://127.0.0.1:2019"
 				},
+				"listen": {
+					"description": "Addresses Caddy serves porches on. Defaults to [\":443\"]",
+					"minItems": 1,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1
+					}
+				},
 				"managed": {
 					"type": "boolean",
 					"description": "True when porch installed Caddy and owns its systemd unit"
@@ -88,6 +97,23 @@
 			},
 			"required": [
 				"range"
+			],
+			"additionalProperties": false
+		},
+		"tls": {
+			"type": "object",
+			"properties": {
+				"issuer": {
+					"type": "string",
+					"enum": [
+						"acme",
+						"internal"
+					],
+					"description": "acme: a real wildcard cert via DNS-01 (default). internal: Caddy's own CA, for tests and LAN-only setups"
+				}
+			},
+			"required": [
+				"issuer"
 			],
 			"additionalProperties": false
 		}
