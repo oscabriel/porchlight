@@ -3,6 +3,7 @@
 // core, and prints the result as text or, with --json, as JSON on stdout.
 import { parseArgs } from "node:util";
 import pkg from "../package.json" with { type: "json" };
+import { createCaddyAdmin } from "./caddy-admin.ts";
 import { PorchError } from "./errors.ts";
 import { importCaddyConfig } from "./import.ts";
 import { loadMachineConfig, stateDir } from "./machine.ts";
@@ -27,7 +28,8 @@ Options:
   --json                          Print JSON on stdout
   --label <text>, --about <text>  Display name and purpose, for ls and docs
   --no-cache                      (serve) Ask browsers to revalidate every file
-  --from <file>                   (import) Read a Caddy JSON config file instead
+  --from <file|admin>             (import) Read a Caddy JSON file, or another Caddy's admin
+                                  API (http://127.0.0.1:2019, unix//path/to/admin.sock)
   --dry-run                       (import) Show what would be imported, change nothing
 `;
 
@@ -125,14 +127,21 @@ const commands: Record<string, (ctx: Context) => Promise<void>> = {
 		}
 	},
 	import: async ({ args, config, porch }) => {
-		const usage = "porch import caddy [--from <config.json>] [--dry-run]";
+		const usage = "porch import caddy [--from <config.json|admin address>] [--dry-run]";
 		const [source] = need(args, 1, usage);
 		if (source !== "caddy") {
 			throw new UsageError(`usage: ${usage}`);
 		}
-		const caddyConfig: unknown = values.from
-			? await Bun.file(values.from).json()
-			: await porch.liveCaddyConfig();
+		const { from } = values;
+		let caddyConfig: unknown;
+		if (from === undefined) {
+			caddyConfig = await porch.liveCaddyConfig();
+		} else if (/^(?:https?:\/\/|unix\/)/u.test(from)) {
+			const other = await createCaddyAdmin(from).current();
+			caddyConfig = other.config;
+		} else {
+			caddyConfig = await Bun.file(from).json();
+		}
 		const { porches, skipped } = importCaddyConfig(caddyConfig, config);
 		const dryRun = values["dry-run"] === true;
 		if (!dryRun) {
