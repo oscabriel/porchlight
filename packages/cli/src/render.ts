@@ -26,6 +26,13 @@ const issuer = (config: MachineConfig) =>
 		: {
 				challenges: {
 					dns: {
+						// Caddy normally polls the zone's nameservers until the TXT record
+						// shows up. Networks that intercept outbound DNS (many routers,
+						// Pi-hole setups) answer those polls themselves, so the record never
+						// "appears" and issuance times out. Let's Encrypt checks from outside,
+						// and Cloudflare publishes within seconds, so wait instead of polling.
+						propagation_delay: "30s",
+						propagation_timeout: -1,
 						provider: { api_token: `{env.${config.dns.tokenEnv}}`, name: config.dns.provider },
 					},
 				},

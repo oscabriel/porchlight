@@ -347,6 +347,13 @@ const moveOver = async (
 		porch.check({ port: options.stagingPort, waitMs: 180_000 }),
 	]);
 	const differ = compare(before, after);
+	const broken = after.filter((c) => "error" in c);
+	if (broken.length > 0) {
+		say(
+			`porch's Caddy can't serve ${broken.length} of ${after.length} porches yet (${shown(broken[0])}). Its log says why: \`journalctl -u ${UNIT_NAME}\`. Nothing has moved, and the old Caddy still serves everything. Run \`porch init\` again once it's fixed.`,
+		);
+		return;
+	}
 	if (differ > 0) {
 		say(
 			`${differ} porch${differ === 1 ? "" : "es"} answer differently. Check them before going on.`,
