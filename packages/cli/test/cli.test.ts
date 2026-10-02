@@ -12,34 +12,6 @@ let caddy: TestCaddy;
 let home: string;
 const servers: { stop: (force?: boolean) => unknown }[] = [];
 
-beforeAll(async () => {
-	caddy = await startCaddy();
-});
-afterAll(async () => {
-	await caddy.stop();
-});
-beforeEach(async () => {
-	home = await mkdtemp(path.join(tmpdir(), "porch-cli-"));
-	const config: MachineConfig = {
-		acmeEmail: "admin@porch.test",
-		artifacts: path.join(home, "artifacts"),
-		caddy: { admin: caddy.admin, listen: [`127.0.0.1:${caddy.httpsPort}`], managed: false },
-		dns: { provider: "cloudflare", tokenEnv: "UNUSED" },
-		domain: "porch.test",
-		network: "tailscale",
-		ports: { range: [3001, 3999] },
-		tls: { issuer: "internal" },
-	};
-	await mkdir(path.join(home, "config", "porchlight"), { recursive: true });
-	await Bun.write(path.join(home, "config", "porchlight", "config.json"), JSON.stringify(config));
-});
-afterEach(async () => {
-	for (const server of servers.splice(0)) {
-		server.stop(true);
-	}
-	await rm(home, { force: true, recursive: true });
-});
-
 const porch = async (...args: string[]) => {
 	const proc = Bun.spawn(["bun", cli, ...args], {
 		env: {
@@ -58,6 +30,32 @@ const porch = async (...args: string[]) => {
 	]);
 	return { code, stderr, stdout };
 };
+
+beforeAll(async () => {
+	caddy = await startCaddy();
+});
+afterAll(async () => {
+	await caddy.stop();
+});
+beforeEach(async () => {
+	home = await mkdtemp(path.join(tmpdir(), "porch-cli-"));
+	const config: MachineConfig = {
+		artifacts: path.join(home, "artifacts"),
+		domain: "porch.test",
+		ports: { range: [3001, 3999] },
+		proxy: { config: caddy.caddyfile, dir: caddy.snippetDir, kind: "caddy", reload: caddy.reload },
+	};
+	await mkdir(path.join(home, "config", "porchlight"), { recursive: true });
+	await Bun.write(path.join(home, "config", "porchlight", "config.json"), JSON.stringify(config));
+	// Caddy still serves the previous test's snippet. Start each test from none.
+	await porch("apply");
+});
+afterEach(async () => {
+	for (const server of servers.splice(0)) {
+		server.stop(true);
+	}
+	await rm(home, { force: true, recursive: true });
+});
 
 const upstream = (body: string) => {
 	const server = Bun.serve({ fetch: () => new Response(body), hostname: "127.0.0.1", port: 0 });
@@ -88,6 +86,19 @@ test("a refusal exits 1 with the reason on stderr, or as JSON with --json", asyn
 	expect(JSON.parse(json.stdout)).toEqual({
 		error: { code: "missing", message: "ghost is not a porch. Run `porch ls` to see them." },
 	});
+});
+
+test("--no-reload writes the snippet and says Caddy wasn't reloaded", async () => {
+	const added = await porch("add", "tv", upstream("tv"), "--no-reload");
+	expect(added.code).toBe(0);
+	expect(added.stdout).toBe(
+		"https://tv.porch.test Reload Caddy to serve it: porch wrote the snippet but didn't reload.\n",
+	);
+	expect((await caddy.get("tv.porch.test")).status).toBe(404);
+
+	const applied = await porch("apply", "--json");
+	expect(JSON.parse(applied.stdout)).toEqual({ applied: 1, reloaded: true });
+	expect((await caddy.get("tv.porch.test")).body).toBe("tv");
 });
 
 test("add and serve refuse reserved names", async () => {

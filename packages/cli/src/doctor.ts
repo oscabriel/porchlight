@@ -3,9 +3,10 @@
 import { Resolver, resolve4 } from "node:dns/promises";
 import { networkInterfaces } from "node:os";
 import { connect } from "node:tls";
-import { adminAddress, adminFetch } from "./caddy-admin.ts";
-import { installedCaddyVersion, isOlder, latestCaddyVersion } from "./caddy-install.ts";
-import { managedCaddyFiles } from "./machine.ts";
+import { importLines } from "./caddyfile.ts";
+import { expandHome } from "./paths.ts";
+import { openPorchlight } from "./porchlight.ts";
+import { readSnippet, snippetDir } from "./proxy.ts";
 import type { MachineConfig } from "./schema.ts";
 
 export interface Check {
@@ -13,6 +14,8 @@ export interface Check {
 	name: string;
 	ok: boolean;
 }
+
+const HTTPS_PORT = 443;
 
 const PRIVATE = [
 	[10, 0, 8],
@@ -33,7 +36,8 @@ export const isPrivate = (ip: string) =>
 		return (toInt(ip) & mask) >>> 0 === (base & mask) >>> 0;
 	});
 
-const localAddresses = () =>
+/** This machine's IPv4 addresses. */
+export const localAddresses = () =>
 	new Set(
 		Object.values(networkInterfaces())
 			.flat()
@@ -51,51 +55,73 @@ const sh = async (cmd: string[]): Promise<string | null> => {
 	}
 };
 
-const caddyChecks = async (config: MachineConfig): Promise<Check[]> => {
-	const admin = adminAddress(config.caddy.admin);
+/** Lines a Caddyfile has to contain to import the snippet. The fallback is optional. */
+const requiredImports = (config: MachineConfig) => importLines(snippetDir(config)).slice(0, 2);
+
+const snippetChecks = async (config: MachineConfig, stateDir: string): Promise<Check[]> => {
+	const porch = openPorchlight({ config, stateDir });
+	const [rendered, onDisk] = await Promise.all([porch.render(), readSnippet(config)]);
+	const stale = Object.entries(rendered).filter(([file, text]) => onDisk[file as never] !== text);
 	const checks: Check[] = [
 		{
-			detail: admin.local
-				? `${admin.shown} answers only this machine`
-				: `${admin.shown} may be reachable from other machines, and the admin API has no auth`,
-			name: "Caddy admin is local-only",
-			ok: admin.local,
+			detail:
+				stale.length === 0
+					? `${snippetDir(config)} matches the registry`
+					: `${stale.map(([file]) => file).join(", ")} in ${snippetDir(config)} differ from the registry. Run \`porch apply\``,
+			name: "Snippet is current",
+			ok: stale.length === 0,
 		},
 	];
-	try {
-		const res = await adminFetch(config.caddy.admin, "/config/", {
-			signal: AbortSignal.timeout(2000),
-		});
-		const body = (await res.json()) as {
-			apps?: { http?: { servers?: Record<string, unknown> } };
-		} | null;
+	const caddyfile = config.proxy.config;
+	if (caddyfile) {
+		const text = await Bun.file(expandHome(caddyfile))
+			.text()
+			.catch(() => null);
+		const missing = requiredImports(config).filter((l) => !text?.includes(l));
+		const detail = (() => {
+			if (text === null) {
+				return `can't read ${caddyfile}`;
+			}
+			if (missing.length === 0) {
+				return `${caddyfile} imports it`;
+			}
+			return `${caddyfile} is missing: ${missing.join("  ")}. Add them inside its *.${config.domain} block`;
+		})();
 		checks.push({
-			detail: `${admin.shown} returned ${res.status}`,
-			name: "Caddy admin API answers",
-			ok: res.ok,
-		});
-		const ours = body?.apps?.http?.servers?.porchlight !== undefined;
-		checks.push({
-			detail: ours
-				? "the live config is porch's"
-				: "Caddy is running a config porch didn't render. `porch apply` replaces it (and `porch rollback` puts it back)",
-			name: "Caddy runs porch's config",
-			ok: ours,
-		});
-	} catch (error) {
-		checks.push({
-			detail: `can't reach ${admin.shown}: ${(error as Error).message}`,
-			name: "Caddy admin API answers",
-			ok: false,
+			detail,
+			name: "Caddyfile imports the snippet",
+			ok: text !== null && missing.length === 0,
 		});
 	}
 	return checks;
 };
 
+/** Every porch fetched through the proxy on :443. A dark porch's 502 still counts: the proxy answered for it. */
+const servedChecks = async (config: MachineConfig, stateDir: string): Promise<Check[]> => {
+	const porch = openPorchlight({ config, stateDir });
+	const served = await porch.check({ port: HTTPS_PORT });
+	if (served.length === 0) {
+		return [];
+	}
+	const failed = served.filter((s) => "error" in s);
+	return [
+		{
+			detail:
+				failed.length === 0
+					? `all ${served.length} answer with a valid certificate`
+					: `${failed.length} of ${served.length} don't: ${failed
+							.map((f) => `${f.name} (${"error" in f ? f.error : ""})`)
+							.join(", ")}`,
+			name: `Every porch answers through the proxy on :${HTTPS_PORT}`,
+			ok: failed.length === 0,
+		},
+	];
+};
+
 // Linux SO_REUSEPORT lets two Caddys both bind :443, and the kernel then
 // splits connections between them. Nothing else reports it.
 const port443Check = async (): Promise<Check[]> => {
-	const ss = await sh(["ss", "-ltnpH", "sport = :443"]);
+	const ss = await sh(["ss", "-ltnpH", `sport = :${HTTPS_PORT}`]);
 	if (ss === null) {
 		return [];
 	}
@@ -106,7 +132,7 @@ const port443Check = async (): Promise<Check[]> => {
 		{
 			detail:
 				count === 1 ? "one listener" : `${count} listeners. Connections are split between them`,
-			name: "Only one process holds :443",
+			name: `Only one process holds :${HTTPS_PORT}`,
 			ok: count === 1,
 		},
 	];
@@ -161,10 +187,8 @@ const dnsChecks = async (config: MachineConfig): Promise<Check[]> => {
 };
 
 const certCheck = (config: MachineConfig): Promise<Check[]> => {
-	const listen = config.caddy.listen?.[0] ?? ":443";
-	const cut = listen.lastIndexOf(":");
-	const host = listen.slice(0, cut) || "127.0.0.1";
-	const port = Number(listen.slice(cut + 1));
+	const host = "127.0.0.1";
+	const port = HTTPS_PORT;
 	const name = `Certificate covers *.${config.domain}`;
 	const { promise, resolve: done } = Promise.withResolvers<Check[]>();
 	{
@@ -203,57 +227,13 @@ const certCheck = (config: MachineConfig): Promise<Check[]> => {
 	return promise;
 };
 
-const caddyVersionCheck = async (config: MachineConfig): Promise<Check[]> => {
-	if (!config.caddy.managed) {
-		return [];
-	}
-	const [installed, latest] = await Promise.all([
-		installedCaddyVersion(managedCaddyFiles().binary),
-		latestCaddyVersion(),
-	]);
-	if (!installed) {
-		return [
-			{
-				detail: `no Caddy at ${managedCaddyFiles().binary}. Run \`porch init\``,
-				name: "Caddy is up to date",
-				ok: false,
-			},
-		];
-	}
-	if (!latest) {
-		return [];
-	}
-	const behind = isOlder(installed, latest);
-	return [
-		{
-			detail: behind
-				? `${installed} installed, ${latest} is out. Run \`porch init\` again to upgrade`
-				: `${installed}`,
-			name: "Caddy is up to date",
-			ok: !behind,
-		},
-	];
-};
-
-const networkCheck = async (config: MachineConfig): Promise<Check[]> => {
-	if (config.network !== "tailscale") {
-		return [];
-	}
-	const status = await sh(["tailscale", "status", "--json"]);
-	const state = status
-		? ((JSON.parse(status) as { BackendState?: string }).BackendState ?? "unknown")
-		: "not installed";
-	return [{ detail: `backend state ${state}`, name: "Tailscale is up", ok: state === "Running" }];
-};
-
-export const doctor = async (config: MachineConfig): Promise<Check[]> => {
+export const doctor = async (config: MachineConfig, stateDir: string): Promise<Check[]> => {
 	const groups = await Promise.all([
-		caddyChecks(config),
+		snippetChecks(config, stateDir),
 		port443Check(),
 		dnsChecks(config),
 		certCheck(config),
-		caddyVersionCheck(config),
-		networkCheck(config),
+		servedChecks(config, stateDir),
 	]);
 	return groups.flat();
 };
