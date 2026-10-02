@@ -8,7 +8,7 @@ import { PorchError } from "./errors.ts";
 import { renderDocs } from "./docs.ts";
 import { newestHistory, pushHistory } from "./history.ts";
 import { withLock } from "./lock.ts";
-import { probe } from "./probe.ts";
+import { probe, throughCaddy } from "./probe.ts";
 import { loadRegistry, saveRegistry } from "./registry.ts";
 import { renderCaddyConfig } from "./render.ts";
 import { PorchName } from "./schema.ts";
@@ -152,6 +152,21 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 		);
 	};
 
+	/**
+	 * Every porch, sorted by name, fetched through this machine's Caddy on
+	 * `port` with its certificate checked: the HTTP status, or why there was
+	 * none. Comparing two Caddys' answers shows whether a move changed any URL.
+	 */
+	const check = async (options: { ca?: string; port: number; waitMs?: number }) => {
+		const names = Object.keys(await list()).toSorted();
+		return Promise.all(
+			names.map(async (name) => ({
+				name,
+				...(await throughCaddy(`${name}.${config.domain}`, options.port, options)),
+			})),
+		);
+	};
+
 	/** Caddy's whole live config, as its admin API reports it. */
 	const liveCaddyConfig = async () => {
 		const live = await caddy.current();
@@ -161,5 +176,5 @@ export const openPorchlight = ({ config, stateDir }: PorchlightOptions) => {
 	/** Markdown URL tables for every porch. */
 	const docs = async () => renderDocs(config, await list());
 
-	return { add, adopt, apply, docs, list, liveCaddyConfig, rm, rollback, serve, status };
+	return { add, adopt, apply, check, docs, list, liveCaddyConfig, rm, rollback, serve, status };
 };

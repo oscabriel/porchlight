@@ -60,3 +60,38 @@ export const probe = async (config: MachineConfig, porch: Porch): Promise<PorchS
 			: await answers(target);
 	return ok ? "lit" : "dark";
 };
+
+export type Served = { status: number } | { error: string };
+
+/**
+ * GETs `https://<host>/` from this machine's Caddy on `port`, verifying its
+ * certificate for `host` (against `ca` when given, else the system's roots).
+ * Retries failures for `waitMs`, since Caddy gets certificates after a load.
+ */
+export const throughCaddy = async (
+	host: string,
+	port: number,
+	{ ca, waitMs = 0 }: { ca?: string; waitMs?: number } = {},
+): Promise<Served> => {
+	const deadline = Date.now() + waitMs;
+	for (;;) {
+		try {
+			// eslint-disable-next-line no-await-in-loop -- retrying until the deadline
+			const res = await fetch(`https://127.0.0.1:${port}/`, {
+				headers: { Host: host },
+				redirect: "manual",
+				signal: AbortSignal.timeout(TIMEOUT_MS),
+				tls: { serverName: host, ...(ca && { ca }) },
+			});
+			// eslint-disable-next-line no-await-in-loop -- free the connection
+			await res.body?.cancel();
+			return { status: res.status };
+		} catch (error) {
+			if (Date.now() >= deadline) {
+				return { error: (error as Error).message };
+			}
+			// eslint-disable-next-line no-await-in-loop -- retrying until the deadline
+			await Bun.sleep(100);
+		}
+	}
+};

@@ -58,10 +58,13 @@ export const ensureCaddy = async () => {
 	return binary;
 };
 
-const freePort = () => {
+export const freePort = () => {
 	const server = Bun.serve({ fetch: () => new Response(), hostname: "127.0.0.1", port: 0 });
 	const { port } = server;
 	server.stop(true);
+	if (port === undefined) {
+		throw new Error("no free port");
+	}
 	return port;
 };
 
@@ -184,5 +187,13 @@ export const startCaddy = async ({ adminSocket = false } = {}) => {
 		await rm(home, { force: true, recursive: true });
 	};
 
-	return { admin, get, headers, httpsPort, stop };
+	/** The root certificate of this Caddy's internal CA, to verify its certs against. */
+	const rootCa = async () => {
+		const res = adminSocket
+			? await fetch("http://localhost/pki/ca/local", { unix: admin.slice("unix/".length) })
+			: await fetch(`${admin}/pki/ca/local`);
+		return ((await res.json()) as { root_certificate: string }).root_certificate;
+	};
+
+	return { admin, get, headers, httpsPort, rootCa, stop };
 };
